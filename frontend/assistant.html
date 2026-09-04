@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>PAIMANA AI Assistant</title>
+<link rel="stylesheet" href="/static/css/paimana.css?v=3"/>
+</head>
+<body>
+<main id="main">
+  <div class="page-head">
+    <div class="wrap">
+      <div class="breadcrumb"><a href="/">Home</a> › PAIMANA AI Assistant</div>
+      <h1>PAIMANA AI Assistant</h1>
+      <p>Ask in plain language, or attach a document, spreadsheet or image. Every answer is
+         labelled with where its information came from.</p>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:26px">
+    <div class="wrap">
+      <div class="grid" style="grid-template-columns:1.6fr .9fr;gap:20px" id="layout">
+        <div>
+          <div class="chat-shell">
+            <div class="chat" id="chat">
+              <div class="chat-drop">Drop files here to attach them</div>
+              <div class="chat-log" id="log">
+                <div class="msg bot">
+                  <div class="who">PAIMANA AI</div>
+                  <div class="bubble">I answer infrastructure project questions from verified PAIMANA data, and I can analyse files you attach — PDFs, Word documents, spreadsheets, CSVs, presentations and images.
+
+Attach a monthly report and ask me to compare it against PAIMANA, or ask whether a dataset is clean. I'll always tell you which source an answer came from.</div>
+                </div>
+              </div>
+
+              <div id="chatError"></div>
+              <div class="attach-tray" id="tray"></div>
+
+              <div class="chat-input">
+                <button class="attach-btn" id="attachBtn" type="button"
+                        aria-label="Attach a file" title="Attach a file">&#128206;</button>
+                <input type="file" id="fileInput" multiple hidden/>
+                <label for="q" class="sr-only">Your question</label>
+                <input id="q" placeholder="Ask PAIMANA AI anything…" autocomplete="off"/>
+                <button class="btn btn-primary btn-sm" id="send">Send</button>
+              </div>
+            </div>
+          </div>
+          <div class="chips" id="chips"></div>
+        </div>
+
+        <div>
+          <style>
+            .di-card{border:1px solid var(--border-soft);background:#fff;border-radius:10px;margin-bottom:16px;overflow:hidden}
+            .di-head{display:flex;justify-content:space-between;align-items:center;padding:15px 18px;border-bottom:1px solid var(--border-soft)}
+            .di-head h3{margin:0;font-size:15px;color:var(--ink)}
+            .di-sub{font-size:11px;color:var(--muted);font-weight:600}
+            .di-body{padding:15px 18px}
+            .di-kicker{font-size:10px;letter-spacing:.08em;font-weight:800;color:#667085;text-transform:uppercase;margin-bottom:5px}
+            .di-project{font-size:15px;font-weight:800;color:#14213d;margin-bottom:2px}
+            .di-meta{font-size:11px;color:#667085}
+            .di-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:13px}
+            .di-metric{background:#f6f8fa;border:1px solid #e7ebef;border-radius:7px;padding:9px 10px}
+            .di-metric span{display:block;font-size:10px;color:#667085;margin-bottom:3px}
+            .di-metric strong{font-size:14px;color:#14213d}
+            .di-section{margin-top:15px;padding-top:13px;border-top:1px solid #edf0f3}
+            .di-section-title{font-size:11px;font-weight:800;color:#344054;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+            .di-bars{display:grid;gap:7px}.di-bar-row{display:grid;grid-template-columns:90px 1fr 38px;gap:8px;align-items:center;font-size:10.5px;color:#475467}.di-track{height:7px;background:#edf0f3;border-radius:5px;overflow:hidden}.di-fill{height:100%;background:#344054;border-radius:5px}
+            .di-scenarios{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.di-scenario{border:1px solid #e4e7ec;border-radius:7px;padding:9px}.di-scenario b{display:block;font-size:11px;color:#344054;margin-bottom:4px}.di-scenario span{font-size:10px;color:#667085}.di-scenario strong{display:block;font-size:13px;margin-top:4px;color:#14213d}
+            .di-actions{display:grid;gap:7px}.di-action{padding:9px 10px;border:1px solid #e4e7ec;border-radius:7px;background:#fafbfc;font-size:11px;color:#344054}.di-action b{display:block;color:#14213d;margin-bottom:2px}
+            .di-evidence{display:flex;gap:8px;flex-wrap:wrap}.di-tag{border:1px solid #d9dee5;background:#f8fafb;border-radius:5px;padding:5px 7px;font-size:10px;color:#475467}.di-tag strong{color:#14213d}
+            .di-chart{width:100%;height:100px;display:block}.di-empty{font-size:11.5px;color:#667085;line-height:1.5}
+          </style>
+
+          <!-- Document Intelligence -->
+          <div class="di-card" id="fileInspectorCard" style="display:none">
+            <div class="di-head"><h3>Document Intelligence</h3><span class="di-sub">Attachment assessment</span></div>
+            <div id="fileInspectorBody" class="di-body"></div>
+          </div>
+
+          <!-- Decision Context -->
+          <div class="di-card">
+            <div class="di-head"><h3>Decision Context</h3><button type="button" id="clearCtxBtn" class="quick-action-btn" style="font-size:10.5px;padding:2px 7px;display:none">Reset</button></div>
+            <div id="ctx" class="di-body"><div class="di-empty">Select a project or run a query to populate project metrics, risk trajectory and management signals.</div></div>
+          </div>
+
+          <!-- Evidence & Verification -->
+          <div class="di-card">
+            <div class="di-head"><h3>Evidence & Verification</h3><span id="activeSourceBadge" class="di-sub">READY</span></div>
+            <div id="sourcesList" class="di-body">
+              <div class="di-evidence">
+                <span class="di-tag"><strong>PAIMANA DATA</strong> authoritative project records</span>
+                <span class="di-tag"><strong>DOCUMENT</strong> parsed attachment evidence</span>
+                <span class="di-tag"><strong>CROSS-CHECK</strong> source reconciliation</span>
+                <span class="di-tag"><strong>DERIVED</strong> platform calculations</span>
+              </div>
+            </div>
+            <div id="verified" class="di-body" style="border-top:1px solid var(--border-soft)"><div class="di-empty">Evidence details will appear after a query or document analysis.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="/static/js/paimana.js?v=4.2"></script>
+<script>
+renderChrome('/assistant');
+
+const state = { conversationId: null, attachments: [], sending: false, caps: null };
+
+/* ---------- rendering helpers ------------------------------------------- */
+const SRC_CLASS = {
+  'PAIMANA VERIFIED DATA': 'src-paimana', 'UPLOADED FILE': 'src-file',
+  'MIXED SOURCES': 'src-mixed', 'GENERAL AI': 'src-general',
+  'DERIVED ANALYSIS': 'src-mixed', 'PAIMANA ASSISTANT': 'src-system',
+};
+
+/* Minimal, escape-first markdown. Everything is escaped before any tag is
+   introduced, so model or file text can never inject markup. */
+function renderText(raw) {
+  let s = esc(raw);
+  s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,!?]|$)/g, '$1<em>$2</em>');
+  s = s.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  return s;
+}
+
+function fileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(0) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function isImageKind(kind) {
+  return ['PNG', 'JPEG', 'WEBP', 'GIF', 'BMP'].includes(kind);
+}
+
+function addMessage(role, html, source) {
+  const log = document.getElementById('log');
+  const who = role === 'user'
+    ? 'You'
+    : `PAIMANA AI${source ? `<span class="src ${SRC_CLASS[source] || 'src-system'}">${esc(source)}</span>` : ''}`;
+  log.insertAdjacentHTML('beforeend',
+    `<div class="msg ${role === 'user' ? 'user' : 'bot'}">
+       <div class="who">${who}</div><div class="bubble">${html}</div></div>`);
+  log.scrollTop = log.scrollHeight;
+}
+
+function showError(message, retry) {
+  const box = document.getElementById('chatError');
+  box.innerHTML = `<div class="chat-error"><span>${esc(message)}</span>${
+    retry ? '<button type="button" id="retryBtn">Retry</button>' : ''}</div>`;
+  if (retry) document.getElementById('retryBtn').onclick = () => { clearError(); retry(); };
+}
+function clearError() { document.getElementById('chatError').innerHTML = ''; }
+
+/* ---------- attachment tray --------------------------------------------- */
+function renderTray() {
+  const tray = document.getElementById('tray');
+  tray.innerHTML = state.attachments.map((a) => {
+    const cls = a.status === 'FAILED' ? 'is-failed'
+      : a.status === 'IDENTIFIED' ? 'is-identified'
+      : (a.status === 'UPLOADING' || a.status === 'ANALYSING') ? 'is-busy' : '';
+    const visual = a.thumb
+      ? `<img class="attach-thumb" src="${a.thumb}" alt=""/>`
+      : `<span class="attach-icon">${esc((a.kind || a.ext || 'FILE').slice(0, 4))}</span>`;
+    const sub = a.status === 'UPLOADING' ? 'Uploading…'
+      : a.status === 'ANALYSING' ? 'Analysing…'
+      : a.error ? esc(a.error).slice(0, 90)
+      : `${esc(a.label || '')} · ${fileSize(a.size)}${a.quality ? ` · ${esc(a.quality)}` : ''}`;
+    return `<div class="attach-card ${cls}" data-key="${a.key}">
+      ${visual}
+      <div class="attach-meta">
+        <div class="attach-name" title="${esc(a.name)}">${esc(a.name)}</div>
+        <div class="attach-sub">${sub}<span class="attach-state state-${a.status}">${a.status}</span></div>
+      </div>
+      <button class="attach-remove" type="button" aria-label="Remove ${esc(a.name)}"
+              data-remove="${a.key}">&times;</button>
+      ${a.progress != null && a.progress < 100
+        ? `<span class="attach-progress" style="width:${a.progress}%"></span>` : ''}
+    </div>`;
+  }).join('');
+
+  tray.querySelectorAll('[data-remove]').forEach((btn) => {
+    btn.onclick = () => removeAttachment(btn.dataset.remove);
+  });
+}
+
+async function removeAttachment(key) {
+  const item = state.attachments.find((a) => a.key === key);
+  if (!item) return;
+  state.attachments = state.attachments.filter((a) => a.key !== key);
+  renderTray();
+  if (item.id) {
+    try { await API.request(`/api/chat/attachments/${item.id}`, { method: 'DELETE' }); }
+    catch { /* already gone server-side; the tray is what the user sees */ }
+  }
+}
+
+/* Uses XHR rather than fetch purely for upload progress events. */
+function uploadFile(file) {
+  const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const ext = (file.name.split('.').pop() || '').toUpperCase();
+  const item = { key, name: file.name, size: file.size, ext,
+                 status: 'UPLOADING', progress: 0 };
+
+  if (file.type.startsWith('image/') && file.size < 8 * 1024 * 1024) {
+    item.thumb = URL.createObjectURL(file);
+  }
+  state.attachments.push(item);
+  renderTray();
+
+  const maxMb = state.caps?.attachments?.max_file_mb ?? 25;
+  if (file.size > maxMb * 1024 * 1024) {
+    item.status = 'FAILED';
+    item.error = `Too large (${fileSize(file.size)}). The limit is ${maxMb} MB.`;
+    item.progress = null;
+    renderTray();
+    return;
+  }
+
+  const form = new FormData();
+  form.append('file', file);
+  if (state.conversationId) form.append('conversation_id', state.conversationId);
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/chat/attachments');
+  const token = API.token();
+  if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+  xhr.upload.onprogress = (e) => {
+    if (!e.lengthComputable) return;
+    item.progress = Math.round((e.loaded / e.total) * 100);
+    if (item.progress >= 100) item.status = 'ANALYSING';
+    renderTray();
+  };
+
+  xhr.onload = () => {
+    item.progress = null;
+    let body = null;
+    try { body = JSON.parse(xhr.responseText); } catch { /* non-JSON error page */ }
+
+    if (xhr.status !== 201) {
+      item.status = 'FAILED';
+      item.error = (body && body.detail) || `Upload failed (${xhr.status}).`;
+      renderTray();
+      return;
+    }
+    state.conversationId = body.conversation_id;
+    Object.assign(item, {
+      id: body.attachment.id, status: body.attachment.status,
+      kind: body.attachment.kind, label: body.attachment.label,
+      error: body.attachment.error, quality: body.attachment.quality,
+      summary_facts: body.attachment.summary_facts || {},
+      warnings: body.attachment.warnings || [],
+      mismatch: body.attachment.extension_mismatch,
+      injection: body.attachment.prompt_injection_detected,
+    });
+    renderTray();
+
+    const notes = [];
+    if (item.mismatch) notes.push('The file extension does not match its actual contents.');
+    if (item.injection) notes.push('This file contains text written as if instructing an AI. It has been neutralised and treated as document content.');
+    if (item.status === 'FAILED' || item.status === 'IDENTIFIED') {
+      notes.push(item.error || 'This file could not be analysed.');
+    }
+    if (notes.length) {
+      addMessage('bot', renderText(`**${item.name}** — ` + notes.join(' ')), 'PAIMANA ASSISTANT');
+    }
+    renderFileInspector();
+  };
+
+  xhr.onerror = () => {
+    item.status = 'FAILED';
+    item.progress = null;
+    item.error = 'Network error during upload.';
+    renderTray();
+    renderFileInspector();
+  };
+
+  xhr.send(form);
+}
+
+/* ---------- file inspector ---------------------------------------------- */
+function renderFileInspector() {
+  const card = document.getElementById('fileInspectorCard');
+  const body = document.getElementById('fileInspectorBody');
+  const items = state.attachments.filter(a => a.status === 'ANALYSED' || a.status === 'IDENTIFIED' || a.status === 'FAILED');
+  if (!items.length) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = 'block';
+
+  const item = items[items.length - 1];
+  const facts = item.summary_facts || {};
+  const quality = item.quality || 'ANALYSED';
+  const qBadgeCls = quality === 'GOOD' ? 'low' : quality === 'POOR' ? 'high' : 'moderate';
+
+  const rows = facts.row_count != null ? `${facts.row_count} rows` : '';
+  const cols = facts.column_count != null ? `${facts.column_count} cols` : '';
+  const dim = [rows, cols].filter(Boolean).join(' × ') || 'Document';
+
+  const columnsList = facts.column_names && facts.column_names.length
+    ? facts.column_names.slice(0, 5).map(c => `<span class="metric-code" style="margin-right:3px">${esc(c)}</span>`).join('')
+    : '<span style="color:var(--muted)">Text / Document content</span>';
+
+  body.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="font-weight:700;color:var(--ink);max-width:170px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(item.name)}">${esc(item.name)}</div>
+      <span class="badge badge-${qBadgeCls}">${esc(quality)}</span>
+    </div>
+    <div class="metric-grid">
+      <div class="metric-stat">
+        <div class="metric-label">Dimensions</div>
+        <div class="metric-val">${esc(dim)}</div>
+      </div>
+      <div class="metric-stat">
+        <div class="metric-label">Format</div>
+        <div class="metric-val">${esc(item.kind || item.ext || 'FILE')} (${fileSize(item.size)})</div>
+      </div>
+    </div>
+    <div style="margin-top:8px">
+      <div class="metric-label" style="margin-bottom:3px">Detected Columns:</div>
+      <div>${columnsList}</div>
+    </div>
+    ${item.warnings && item.warnings.length ? `<div style="font-size:11px;color:var(--moderate);margin-top:6px">⚠️ ${esc(item.warnings[0])}</div>` : ''}
+    <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+      <button type="button" class="quick-action-btn" onclick="ask('Summarize and audit the complete DPR report in full detail with strong points and risk verdict')">Analyze File</button>
+      <button type="button" class="quick-action-btn" onclick="ask('Cross check this file with PAIMANA verified database')">Cross-check</button>
+      <button type="button" class="quick-action-btn" onclick="ask('Extract all cost estimates, physical progress, and schedule delays from this file')">Extract Metrics</button>
+    </div>
+  `;
+}
+
+function highlightActiveSource(source) {
+  const map = {
+    'PAIMANA VERIFIED DATA': 'paimana',
+    'UPLOADED FILE': 'file',
+    'MIXED SOURCES': 'mixed',
+    'GENERAL AI': 'general',
+    'DERIVED ANALYSIS': 'mixed',
+    'PAIMANA ASSISTANT': 'system',
+  };
+  const key = map[source] || 'system';
+  const activeBadge = document.getElementById('activeSourceBadge');
+  if (activeBadge) activeBadge.textContent = `ACTIVE ROUTE · ${source || 'SYSTEM'}`;
+  const defaultBadges = {
+    'paimana': { text: 'AUTHORITATIVE', cls: 'badge-LOW' },
+    'file': { text: 'DOCUMENT', cls: 'badge-INFO' },
+    'mixed': { text: 'Cross-check', cls: 'badge-MODERATE' },
+    'general': { text: 'DERIVED', cls: 'badge-LOW' },
+    'system': { text: 'SYSTEM', cls: 'badge-LOW' }
+  };
+
+  ['paimana', 'file', 'mixed', 'general', 'system'].forEach(id => {
+    const el = document.getElementById('src-item-' + id);
+    if (el) {
+      const badge = el.querySelector('.badge');
+      if (id === key) {
+        el.classList.add('active-src');
+        if (badge) {
+          badge.textContent = 'ACTIVE NOW';
+          badge.className = 'badge badge-HIGH';
+          badge.style.fontSize = '9.5px';
+        }
+      } else {
+        el.classList.remove('active-src');
+        if (badge && defaultBadges[id]) {
+          badge.textContent = defaultBadges[id].text;
+          badge.className = `badge ${defaultBadges[id].cls}`;
+          badge.style.fontSize = '9.5px';
+        }
+      }
+    }
+  });
+}
+
+/* ---------- context panel & analytics ----------------------------------- */
+function renderContext(ctx) {
+  const box = document.getElementById('ctx');
+  const clearBtn = document.getElementById('clearCtxBtn');
+  const result = lastResponseData?.verified_result;
+  const p = result?.project;
+  const c = result?.current;
+  const trend = Array.isArray(result?.trend_series) ? result.trend_series : (Array.isArray(result?.history) ? result.history : []);
+  const fmt = (v, suffix='') => v == null || v === '' ? '—' : esc(String(v)) + suffix;
+  const money = v => v == null ? '—' : '₹ ' + Number(v).toLocaleString('en-IN') + ' Cr';
+  const score = c?.risk_score;
+  const level = c?.risk_level || 'NOT AVAILABLE';
+  const riskPct = score == null ? 0 : Math.max(0, Math.min(100, Number(score)));
+  const has = p || c || state.attachments.length || ctx?.current_project;
+  if (clearBtn) clearBtn.style.display = has ? 'inline-block' : 'none';
+  if (!has) { box.innerHTML='<div class="di-empty">Select a project or run a query to populate project metrics, risk trajectory and management signals.</div>'; return; }
+
+  const projectName = p?.name || ctx?.current_project?.name || ctx?.current_project?.project_code || 'Current project';
+  const code = p?.project_code || ctx?.current_project?.project_code || '';
+  const period = c?.period || ctx?.period || '';
+  let chart='';
+  if (trend.length >= 2) {
+    const vals=trend.map(x=>Number(x.risk_score)).filter(Number.isFinite); const min=Math.min(...vals), max=Math.max(...vals), span=Math.max(1,max-min);
+    const pts=trend.map((x,i)=>{const v=Number(x.risk_score); const y=88-((v-min)/span)*70; const xx=5+(i/(trend.length-1))*290; return `${xx.toFixed(1)},${y.toFixed(1)}`}).join(' ');
+    chart=`<svg class="di-chart" viewBox="0 0 300 100" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="2.2"/><line x1="5" y1="88" x2="295" y2="88" stroke="#e5e7eb"/></svg><div class="di-meta">Risk trajectory · ${trend.length} observations</div>`;
+  } else chart='<div class="di-empty">Historical risk series not available for this response.</div>';
+
+  const drivers=[];
+  if (c?.schedule_delay_months != null) drivers.push(['Schedule delay', Math.min(100, Number(c.schedule_delay_months)*10), fmt(c.schedule_delay_months,' months')]);
+  if (c?.cost_overrun_pct != null) drivers.push(['Cost pressure', Math.min(100, Math.abs(Number(c.cost_overrun_pct))), fmt(c.cost_overrun_pct,'%')]);
+  if (c?.physical_progress != null) drivers.push(['Progress gap', Math.max(0,Math.min(100,100-Number(c.physical_progress))), fmt(c.physical_progress,'% complete')]);
+  if (!drivers.length) drivers.push(['Risk score', riskPct, score == null ? '—' : fmt(score)]);
+
+  const scenario = (name, delta, text) => { const v=score==null?null:Math.min(100,Math.max(0,Number(score)+delta)); return `<div class="di-scenario"><b>${name}</b><span>${text}</span><strong>${v==null?'—':Math.round(v)+' · '+(v>=75?'SEVERE':v>=50?'HIGH':v>=25?'MODERATE':'LOW')}</strong></div>`; };
+  box.innerHTML=`<div class="di-kicker">ACTIVE PROJECT</div><div class="di-project">${esc(projectName)}</div><div class="di-meta">${esc(code)}${period?' · '+esc(period):''}</div>
+    <div class="di-grid"><div class="di-metric"><span>Risk score</span><strong>${score==null?'—':Math.round(score)+' · '+esc(level)}</strong></div><div class="di-metric"><span>Physical progress</span><strong>${fmt(c?.physical_progress,'%')}</strong></div><div class="di-metric"><span>Schedule delay</span><strong>${fmt(c?.schedule_delay_months,' months')}</strong></div><div class="di-metric"><span>Revised cost</span><strong>${money(c?.revised_cost_cr)}</strong></div><div class="di-metric"><span>Expenditure</span><strong>${money(c?.expenditure_cr)}</strong></div><div class="di-metric"><span>Confidence</span><strong>${c?.confidence==null?'—':Math.round(Number(c.confidence)*100)+'%'}</strong></div></div>
+    <div class="di-section"><div class="di-section-title">Risk trajectory</div>${chart}</div>
+    <div class="di-section"><div class="di-section-title">Leading risk signals</div><div class="di-bars">${drivers.map(d=>`<div class="di-bar-row"><span>${d[0]}</span><div class="di-track"><div class="di-fill" style="width:${d[1]}%"></div></div><span>${esc(String(d[2]))}</span></div>`).join('')}</div></div>
+    <div class="di-section"><div class="di-section-title">Scenario outlook</div><div class="di-scenarios">${scenario('Baseline',0,'Current trajectory')}${scenario('Schedule pressure',8,'Further delivery slippage')}${scenario('Cost pressure',7,'Additional cost escalation')}${scenario('Combined stress',15,'Schedule + cost deterioration')}</div></div>
+    <div class="di-section"><div class="di-section-title">Management recommendations</div><div class="di-actions"><div class="di-action"><b>1 · Investigate the dominant driver</b>Review the latest delay, cost and progress records before approving the next milestone.</div><div class="di-action"><b>2 · Validate evidence</b>Cross-check the latest DPR against the corresponding PAIMANA snapshot where discrepancies exist.</div><div class="di-action"><b>3 · Escalate if trajectory worsens</b>Trigger intervention when risk continues rising or schedule/cost thresholds are breached.</div></div></div>`;
+}
+
+/* ---------- tabbed verified inspector ------------------------------------- */
+let currentTab = 'summary';
+let lastResponseData = null;
+
+function evidenceValue(value, suffix = '') {
+  if (value === null || value === undefined || value === '') return 'UNKNOWN';
+  return `${esc(String(value))}${suffix}`;
+}
+
+function evidencePeriod(data) {
+  return data?.period || data?.paimana_period || data?.current?.period || '—';
+}
+
+function renderVerified(r) {
+  if (r) lastResponseData = r;
+  const verified = document.getElementById('verified');
+  const response = lastResponseData;
+  const data = response?.verified_result || response?.cross_check;
+
+  if (!response || !data) {
+    verified.className = 'empty inspector-body';
+    verified.textContent = response?.grounding_note || 'Run a query to inspect the evidence used for the answer.';
+    return;
+  }
+  verified.className = 'inspector-body';
+
+  if (currentTab === 'summary') {
+    const source = response.source || 'PAIMANA ASSISTANT';
+    const period = evidencePeriod(data);
+    const query = data.query || data.identifier_column || 'Evidence payload returned by the platform';
+
+    // Project-scoped result: expose the actual snapshot fields rather than
+    // looking for them at the wrong level.
+    if (data.project && data.current) {
+      const p = data.project;
+      const c = data.current;
+      const prov = data.provenance || {};
+      const risk = c.risk_score != null ? `${Math.round(c.risk_score)} · ${esc(c.risk_level || 'UNKNOWN')}` : 'UNKNOWN';
+      verified.innerHTML = `
+        <div class="evidence-summary-head">
+          <div>
+            <div class="evidence-kicker">VERIFIED PROJECT SNAPSHOT</div>
+            <div class="evidence-project-name">${esc(p.name || 'Project')}</div>
+            <div class="evidence-project-code">${esc(p.project_code || 'No project code')} · ${esc(c.period || 'No period')}</div>
+          </div>
+          <span class="evidence-state state-verified">DATABASE RESULT</span>
+        </div>
+        <div class="evidence-grid">
+          <div><span>Risk</span><strong>${risk}</strong></div>
+          <div><span>Physical progress</span><strong>${evidenceValue(c.physical_progress, '%')}</strong></div>
+          <div><span>Schedule delay</span><strong>${evidenceValue(c.schedule_delay_months, ' months')}</strong></div>
+          <div><span>Revised cost</span><strong>${c.revised_cost_cr != null ? '₹ ' + Number(c.revised_cost_cr).toLocaleString('en-IN') + ' Cr' : 'UNKNOWN'}</strong></div>
+          <div><span>Expenditure</span><strong>${c.expenditure_cr != null ? '₹ ' + Number(c.expenditure_cr).toLocaleString('en-IN') + ' Cr' : 'UNKNOWN'}</strong></div>
+          <div><span>Risk confidence</span><strong>${c.confidence != null ? pct(c.confidence * 100) : 'UNKNOWN'}</strong></div>
+        </div>
+        <div class="evidence-lineage">
+          <div><span>Source document</span><strong>${esc(prov.source_document || 'Not available')}</strong></div>
+          <div><span>Report</span><strong>${esc(prov.report_label || c.period || 'Not available')}</strong></div>
+          <div><span>Source page</span><strong>${evidenceValue(prov.page)}</strong></div>
+          <div><span>Trend</span><strong>${esc(data.trend || 'UNKNOWN')}</strong></div>
+        </div>
+      `;
+      return;
+    }
+
+    // File-vs-database comparison: show the reconciliation outcome instead of
+    // treating the comparison object like a project list.
+    if (data.applicable && (data.matched_count != null || data.rows_examined != null)) {
+      const matched = data.matched_count ?? 0;
+      const unmatched = data.unmatched_count ?? 0;
+      const discrepant = data.projects_with_discrepancies ?? 0;
+      const totalCompared = matched + unmatched;
+      const agreement = matched ? Math.max(0, Math.round(((matched - discrepant) / matched) * 100)) : null;
+      const rows = (data.discrepancies || []).slice(0, 5);
+      verified.innerHTML = `
+        <div class="evidence-summary-head">
+          <div>
+            <div class="evidence-kicker">RECONCILIATION RESULT</div>
+            <div class="evidence-project-name">Uploaded file vs PAIMANA dataset</div>
+            <div class="evidence-project-code">${esc(data.sheet || 'Tabular source')} · ${esc(data.paimana_period || period)}</div>
+          </div>
+          <span class="evidence-state ${discrepant ? 'state-review' : 'state-verified'}">${discrepant ? 'REVIEW REQUIRED' : 'NO DISCREPANCIES'}</span>
+        </div>
+        <div class="evidence-grid">
+          <div><span>Rows examined</span><strong>${data.rows_examined ?? 0}</strong></div>
+          <div><span>Matched to PAIMANA</span><strong>${matched}</strong></div>
+          <div><span>Unmatched</span><strong>${unmatched}</strong></div>
+          <div><span>Projects with differences</span><strong>${discrepant}</strong></div>
+          <div><span>Comparison coverage</span><strong>${totalCompared ? Math.round((matched / totalCompared) * 100) + '%' : 'UNKNOWN'}</strong></div>
+          <div><span>Match agreement</span><strong>${agreement != null ? agreement + '%' : 'UNKNOWN'}</strong></div>
+        </div>
+        ${rows.length ? `<div class="evidence-table-wrap"><table class="evidence-table"><thead><tr><th>Project</th><th>Field</th><th>Uploaded</th><th>PAIMANA</th><th>Status</th></tr></thead><tbody>${rows.flatMap(x => (x.comparisons || []).filter(c => c.status === 'DIFFERS').slice(0, 2).map(c => `<tr><td>${esc(x.project_code || x.project_name || '—')}</td><td>${esc(c.field || '—')}</td><td>${evidenceValue(c.uploaded_value)}</td><td>${evidenceValue(c.paimana_value)}</td><td><span class="evidence-state state-review">DIFFERS</span></td></tr>`)).join('')}</tbody></table></div>` : `<div class="evidence-note">No field-level discrepancies were returned for the matched records.</div>`}
+        <div class="evidence-note">A difference does not establish which source is correct. Reporting period, definition, or revision state may differ.</div>
+      `;
+      return;
+    }
+
+    // List / aggregate query result.
+    const projects = Array.isArray(data.projects) ? data.projects : [];
+    const rows = projects.slice(0, 6).map(p => `
+      <tr>
+        <td><strong>${esc(p.name || p.project_name || 'Project')}</strong><small>${esc(p.project_code || '')}</small></td>
+        <td>${evidenceValue(p.state)}</td>
+        <td>${p.risk_score != null ? Math.round(p.risk_score) + ' · ' + esc(p.risk_level || '') : 'UNKNOWN'}</td>
+        <td>${evidenceValue(p.schedule_delay_months, ' mo')}</td>
+        <td>${evidenceValue(p.physical_progress, '%')}</td>
+      </tr>`).join('');
+
+    if (rows) {
+      verified.innerHTML = `
+        <div class="evidence-summary-head">
+          <div><div class="evidence-kicker">VERIFIED QUERY RESULT</div><div class="evidence-project-name">${esc(data.count ?? projects.length)} matching records</div><div class="evidence-project-code">Reporting period · ${esc(period)}</div></div>
+          <span class="evidence-state state-verified">DATABASE RESULT</span>
+        </div>
+        <div class="evidence-query"><span>Query</span><code>${esc(query)}</code></div>
+        <div class="evidence-table-wrap"><table class="evidence-table"><thead><tr><th>Project</th><th>State</th><th>Risk</th><th>Delay</th><th>Progress</th></tr></thead><tbody>${rows}</tbody></table></div>
+        ${projects.length > 6 ? `<div class="evidence-note">Showing 6 of ${esc(projects.length)} records returned to the assistant.</div>` : ''}
+      `;
+      return;
+    }
+
+    // Generic verified/derived result: still expose what the engine actually returned.
+    const summaryEntries = Object.entries(data).filter(([k, v]) => !['projects', 'history', 'risk_drivers', 'open_alerts', 'open_interventions', 'provenance'].includes(k) && ['string','number','boolean'].includes(typeof v));
+    verified.innerHTML = `
+      <div class="evidence-summary-head"><div><div class="evidence-kicker">ENGINE RESULT</div><div class="evidence-project-name">${esc(response.intent || 'Verified analysis')}</div><div class="evidence-project-code">Reporting period · ${esc(period)}</div></div><span class="evidence-state state-verified">${esc(source)}</span></div>
+      <div class="evidence-grid">${summaryEntries.slice(0, 8).map(([k,v]) => `<div><span>${esc(k.replaceAll('_',' '))}</span><strong>${esc(String(v))}</strong></div>`).join('')}</div>
+      <div class="evidence-query"><span>Engine note</span><code>${esc(response.grounding_note || 'Computed by the platform.')}</code></div>
+    `;
+  } else if (currentTab === 'provenance') {
+    const source = response.source || 'PAIMANA ASSISTANT';
+    const data = response.verified_result || response.cross_check || {};
+    const prov = data.provenance || {};
+    const isPaimana = source === 'PAIMANA VERIFIED DATA';
+    const isMixed = source === 'MIXED SOURCES';
+    const method = isMixed ? 'Cross-source reconciliation' : isPaimana ? 'Deterministic PAIMANA query' : source === 'UPLOADED FILE' ? 'Document / dataset parsing' : 'Assistant routing';
+    const modelRole = isPaimana || isMixed || source === 'UPLOADED FILE' ? 'Explanation only; figures are produced by platform processing.' : 'Not applicable to this evidence record.';
+
+    verified.innerHTML = `
+      <div class="provenance-banner">
+        <div><div class="evidence-kicker">EVIDENCE STATUS</div><strong>${isMixed ? 'Two-source comparison' : isPaimana ? 'Verified database evidence' : source === 'UPLOADED FILE' ? 'Parsed document evidence' : 'System response'}</strong></div>
+        <span class="evidence-state ${isPaimana || isMixed ? 'state-verified' : 'state-neutral'}">${esc(source)}</span>
+      </div>
+      <div class="provenance-list">
+        <div><span>Verification method</span><strong>${esc(method)}</strong></div>
+        <div><span>Reporting period</span><strong>${esc(evidencePeriod(data))}</strong></div>
+        <div><span>Source document</span><strong>${esc(prov.source_document || data.filename || 'Not exposed for this result')}</strong></div>
+        <div><span>Source report</span><strong>${esc(prov.report_label || data.paimana_period || 'Not available')}</strong></div>
+        <div><span>Source page</span><strong>${evidenceValue(prov.page)}</strong></div>
+        <div><span>Engine intent</span><strong>${esc(response.intent || 'Not specified')}</strong></div>
+        <div><span>Query / operation</span><strong class="mono">${esc(data.query || 'Not exposed')}</strong></div>
+        <div><span>Model role</span><strong>${esc(modelRole)}</strong></div>
+      </div>
+      ${isMixed ? `<div class="evidence-note"><strong>Important:</strong> a discrepancy is a reconciliation finding, not proof that the uploaded file or PAIMANA record is incorrect.</div>` : ''}
+      <div class="evidence-note">${esc(response.grounding_note || 'The platform reports the source and method used for this answer.')}</div>
+    `;
+  }
+}
+
+// Wire inspector tabs
+document.querySelectorAll('.inspector-tab').forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll('.inspector-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentTab = tab.dataset.tab;
+    renderVerified();
+  };
+});
+
+// Wire reset context button
+const clearBtn = document.getElementById('clearCtxBtn');
+if (clearBtn) {
+  clearBtn.onclick = () => {
+    state.conversationId = null;
+    state.attachments = [];
+    renderTray();
+    renderFileInspector();
+    renderContext({});
+    lastResponseData = null;
+    renderVerified();
+  };
+}
+
+/* ---------- send --------------------------------------------------------- */
+async function ask(question) {
+  if (state.sending) return;
+  const pending = state.attachments.filter((a) => a.status === 'UPLOADING' || a.status === 'ANALYSING');
+  if (pending.length) {
+    showError('Still processing an attachment. One moment.');
+    return;
+  }
+  clearError();
+  state.sending = true;
+  document.getElementById('send').disabled = true;
+  document.getElementById('attachBtn').disabled = true;
+
+  const usable = state.attachments.filter((a) => a.id);
+  const attachmentNote = usable.length
+    ? `<div style="font-size:11.6px;opacity:.85;margin-top:6px">📎 ${usable.map((a) => esc(a.name)).join(', ')}</div>`
+    : '';
+  addMessage('user', esc(question) + attachmentNote);
+
+  const log = document.getElementById('log');
+  log.insertAdjacentHTML('beforeend',
+    `<div class="msg bot" id="pending"><div class="who">PAIMANA AI</div>
+     <div class="bubble"><span class="spinner"></span> ${usable.length ? 'Analysing' : 'Working on that'}…</div></div>`);
+  log.scrollTop = log.scrollHeight;
+
+  try {
+    const r = await API.post('/api/chat/message', {
+      message: question,
+      conversation_id: state.conversationId,
+      attachment_ids: usable.map((a) => a.id),
+    });
+    state.conversationId = r.conversation_id;
+    document.getElementById('pending').remove();
+    addMessage('bot', renderText(r.answer), r.source);
+
+    highlightActiveSource(r.source);
+    renderVerified(r);
+    renderContext(r.context || {});
+  } catch (err) {
+    document.getElementById('pending')?.remove();
+    showError(err.message || 'Something went wrong.', () => ask(question));
+  } finally {
+    state.sending = false;
+    document.getElementById('send').disabled = false;
+    document.getElementById('attachBtn').disabled = false;
+    document.getElementById('q').focus();
+  }
+}
+
+function submit() {
+  const input = document.getElementById('q');
+  let v = input.value.trim();
+  const usable = state.attachments.filter((a) => a.id || a.status === 'ANALYSED' || a.status === 'IDENTIFIED' || a.status === 'UPLOADING' || a.status === 'ANALYSING');
+  
+  if (!v) {
+    if (usable.length) {
+      const names = usable.map(a => a.name).join(', ');
+      v = `Analyze and audit ${names}`;
+    } else {
+      return;
+    }
+  }
+  
+  input.value = '';
+  ask(v);
+}
+
+/* ---------- wiring ------------------------------------------------------- */
+document.getElementById('send').onclick = submit;
+document.getElementById('q').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
+});
+document.getElementById('attachBtn').onclick = () => document.getElementById('fileInput').click();
+document.getElementById('fileInput').addEventListener('change', (e) => {
+  const max = state.caps?.attachments?.max_files_per_message ?? 5;
+  const files = Array.from(e.target.files).slice(0, max);
+  if (e.target.files.length > max) {
+    showError(`Only the first ${max} files were attached; that's the per-message limit.`);
+  }
+  files.forEach(uploadFile);
+  e.target.value = '';
+});
+
+const chat = document.getElementById('chat');
+['dragenter', 'dragover'].forEach((evt) => chat.addEventListener(evt, (e) => {
+  e.preventDefault(); chat.classList.add('dragover');
+}));
+['dragleave', 'drop'].forEach((evt) => chat.addEventListener(evt, (e) => {
+  e.preventDefault();
+  if (evt === 'dragleave' && chat.contains(e.relatedTarget)) return;
+  chat.classList.remove('dragover');
+}));
+chat.addEventListener('drop', (e) => {
+  const max = state.caps?.attachments?.max_files_per_message ?? 5;
+  Array.from(e.dataTransfer.files).slice(0, max).forEach(uploadFile);
+});
+
+(async function () {
+  try {
+    const cap = await API.get('/api/chat/capabilities');
+    state.caps = cap;
+    document.getElementById('fileInput').accept = cap.attachments.accepted_extensions.join(',');
+    const questions = cap.supported_questions.concat([
+      "Bhai konsi project high risk pe hai",
+      "Railway wale late projects dikha bro",
+      "कौन से प्रोजेक्ट्स लेट हैं?"
+    ]);
+    document.getElementById('chips').innerHTML = questions
+      .map((s) => `<button class="chip" type="button">${esc(s)}</button>`).join('');
+    document.querySelectorAll('#chips .chip').forEach((btn) => {
+      btn.onclick = () => ask(btn.textContent);
+    });
+    document.getElementById('llmState').textContent = cap.note;
+  } catch {
+    document.getElementById('llmState').textContent =
+      'Could not load assistant capabilities. Attachments may be unavailable.';
+  }
+
+  const preset = qs('q');
+  if (preset) ask(preset);
+})();
+</script>
+</body>
+</html>

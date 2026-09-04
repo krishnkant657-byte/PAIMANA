@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Intervention Centre — PAIMANA</title>
+<link rel="stylesheet" href="/static/css/paimana.css?v=2"/>
+</head>
+<body>
+<main id="main">
+  <div class="page-head">
+    <div class="wrap">
+      <div class="breadcrumb"><a href="/">Home</a> › Interventions</div>
+      <h1>Intervention Centre</h1>
+      <p>Track remedial action from the moment a risk is flagged through to closure.
+         Every status change is recorded with actor and timestamp.</p>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:26px">
+    <div class="wrap">
+      <div class="grid grid-4" id="statusCards" style="margin-bottom:22px"></div>
+      <div class="card" style="margin-bottom:18px">
+        <div class="filters">
+          <div class="field"><label for="fstat">Status</label>
+            <select id="fstat"><option value="">All statuses</option>
+              <option>CREATED</option><option>ASSIGNED</option><option>IN_PROGRESS</option>
+              <option>ESCALATED</option><option>RESOLVED</option><option>CLOSED</option>
+            </select></div>
+        </div>
+      </div>
+      <div id="list" class="loading"><span class="spinner"></span> Loading…</div>
+    </div>
+  </section>
+</main>
+
+<script src="/static/js/paimana.js?v=2"></script>
+<script>
+renderChrome('/interventions');
+
+const LIFECYCLE = ['CREATED', 'ASSIGNED', 'IN_PROGRESS', 'ESCALATED', 'RESOLVED', 'CLOSED'];
+
+async function load() {
+  const list = document.getElementById('list');
+  list.className = 'loading';
+  list.innerHTML = '<span class="spinner"></span> Loading…';
+  const stat = document.getElementById('fstat').value;
+
+  try {
+    const data = await API.get('/api/interventions' + (stat ? '?status=' + stat : ''));
+
+    document.getElementById('statusCards').innerHTML = ['ASSIGNED', 'IN_PROGRESS', 'ESCALATED', 'RESOLVED']
+      .map((s) => `<div class="stat-card"><div class="label">${s.replace('_', ' ')}</div>
+        <div class="value">${int(data.by_status[s] || 0)}</div></div>`).join('');
+
+    const user = API.user();
+    if (!data.items.length) {
+      list.className = 'empty';
+      list.innerHTML = `No interventions recorded${stat ? ' with status ' + stat : ''}.
+        <div style="margin-top:12px;font-size:13px">Open a project from the
+        <a href="/warnings">Early Warning Register</a> to raise one.</div>`;
+      return;
+    }
+
+    list.className = '';
+    list.innerHTML = data.items.map((i) => `
+      <div class="card" style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div><span class="mono" style="font-weight:700;color:var(--navy)">${esc(i.reference)}</span>
+            ${badge(i.severity)}
+            <span class="badge badge-INFO">${i.status}</span></div>
+          <span style="font-size:12px;color:var(--faint)">Raised
+            ${esc((i.created_at || '').slice(0, 10))} by ${esc(i.created_by || '—')}</span>
+        </div>
+
+        <div style="margin:12px 0 10px;display:flex;gap:4px;flex-wrap:wrap">
+          ${LIFECYCLE.map((s) => {
+            const done = LIFECYCLE.indexOf(i.status) >= LIFECYCLE.indexOf(s);
+            return `<span style="font-size:10.5px;font-weight:700;letter-spacing:.05em;
+              padding:3px 9px;border-radius:100px;
+              background:${done ? 'var(--navy)' : 'var(--surface-alt)'};
+              color:${done ? '#fff' : 'var(--faint)'}">${s.replace('_', ' ')}</span>`;
+          }).join('')}
+        </div>
+
+        <p style="font-size:13.6px;margin:0 0 8px">${esc(i.issue)}</p>
+        <div style="font-size:12.6px;color:var(--muted);margin-bottom:8px">
+          <a href="/project?code=${i.project.project_code}" style="font-weight:600">
+            ${esc(i.project.name.slice(0, 70))}</a> · ${esc(i.project.state)}
+          · Owner ${esc(i.owner || 'Unassigned')} · Due ${esc(i.due_date || '—')}</div>
+        ${i.action ? `<div style="font-size:12.8px"><strong>Action:</strong> ${esc(i.action)}</div>` : ''}
+        ${i.resolution ? `<div style="font-size:12.8px;margin-top:4px">
+          <strong>Resolution:</strong> ${esc(i.resolution)}</div>` : ''}
+
+        ${(i.history || []).length ? `<details style="margin-top:10px">
+          <summary style="font-size:12.4px;cursor:pointer;color:var(--gov-blue)">
+            Audit history (${i.history.length} entries)</summary>
+          <ul style="font-size:12.2px;margin:8px 0 0;padding-left:18px">
+            ${i.history.map((h) => `<li>${esc((h.at || '').slice(0, 16).replace('T', ' '))} —
+              ${esc(h.from || 'created')} → <strong>${esc(h.to)}</strong> by ${esc(h.by)}
+              ${h.note ? '· ' + esc(h.note) : ''}</li>`).join('')}
+          </ul></details>` : ''}
+
+        ${user ? `<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap">
+          ${LIFECYCLE.filter((s) => s !== i.status).map((s) =>
+            `<button class="btn btn-outline btn-sm"
+              onclick="move('${i.reference}','${s}')">${s.replace('_', ' ')}</button>`).join('')}
+        </div>` : ''}
+      </div>`).join('');
+  } catch (err) {
+    list.className = '';
+    list.innerHTML = `<div class="notice notice-warn">${esc(err.message)}</div>`;
+  }
+}
+
+async function move(ref, status) {
+  const note = prompt(`Note for moving ${ref} to ${status} (optional):`) ?? '';
+  try {
+    await API.patch('/api/interventions/' + ref, { status, remarks: note || null });
+    load();
+  } catch (err) { alert(err.message); }
+}
+
+document.getElementById('fstat').addEventListener('change', load);
+load();
+</script>
+</body>
+</html>

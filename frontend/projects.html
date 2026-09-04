@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Project Explorer — PAIMANA</title>
+<link rel="stylesheet" href="/static/css/paimana.css?v=2"/>
+</head>
+<body>
+<main id="main">
+  <div class="page-head">
+    <div class="wrap">
+      <div class="breadcrumb"><a href="/">Home</a> › Project Explorer</div>
+      <h1>Project Explorer</h1>
+      <p id="explorerCaption">Search, filter and rank the full project register.</p>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:26px">
+    <div class="wrap">
+      <div class="card" style="margin-bottom:20px">
+        <div class="filters">
+          <div class="field" style="position:relative;flex:1 1 220px">
+            <label for="fq">Search</label>
+            <input id="fq" name="paimana_no_autofill_${Date.now()}" placeholder="Search by project name, code or agency" autocomplete="off" aria-autocomplete="none" autocapitalize="off" spellcheck="false" style="width:100%"/>
+            <div id="fqSuggestBox" style="position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid var(--border, #cbd5e1);box-shadow:0 8px 24px rgba(0,0,0,0.12);border-radius:6px;z-index:1000;max-height:280px;overflow-y:auto;display:none;margin-top:4px;padding:6px"></div>
+          </div>
+          <div class="field"><label for="fstate">State</label>
+            <select id="fstate"><option value="">All states</option></select></div>
+          <div class="field"><label for="fsector">Sector</label>
+            <select id="fsector"><option value="">All sectors</option></select></div>
+          <div class="field"><label for="frisk">Risk level</label>
+            <select id="frisk"><option value="">All levels</option></select></div>
+          <div class="field"><label for="fsort">Sort by</label>
+            <select id="fsort">
+              <option value="risk_desc">Highest risk</option>
+              <option value="risk_asc">Lowest risk</option>
+              <option value="cost_desc">Largest cost</option>
+              <option value="delay_desc">Longest delay</option>
+              <option value="progress_asc">Least progress</option>
+              <option value="name">Project name</option>
+            </select></div>
+          <div class="field" style="flex:0 0 auto">
+            <label>&nbsp;</label>
+            <button class="btn btn-primary btn-sm" id="applyBtn">Apply</button>
+          </div>
+          <div class="field" style="flex:0 0 auto">
+            <label>&nbsp;</label>
+            <button class="btn btn-outline btn-sm" id="resetBtn">Reset</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="resultMeta" style="font-size:13px;color:var(--muted);margin-bottom:12px"></div>
+      <div class="table-wrap"><div id="results" class="loading">Loading…</div></div>
+      <div class="pagination" id="pager"></div>
+    </div>
+  </section>
+</main>
+
+<script src="/static/js/paimana.js?v=4.0"></script>
+<script>
+renderChrome('/projects');
+
+const state = { page: 1, page_size: 25 };
+
+function readParams() {
+  const p = new URLSearchParams(location.search);
+  document.getElementById('fq').value = p.get('q') || '';
+  document.getElementById('fstate').value = p.get('state') || '';
+  document.getElementById('fsector').value = p.get('sector') || '';
+  document.getElementById('frisk').value = p.get('risk_level') || '';
+  document.getElementById('fsort').value = p.get('sort') || 'risk_desc';
+  state.page = Number(p.get('page') || 1);
+}
+
+function buildQuery() {
+  const p = new URLSearchParams();
+  const q = document.getElementById('fq').value.trim();
+  const st = document.getElementById('fstate').value;
+  const se = document.getElementById('fsector').value;
+  const rl = document.getElementById('frisk').value;
+  const so = document.getElementById('fsort').value;
+  if (q) p.set('q', q);
+  if (st) p.set('state', st);
+  if (se) p.set('sector', se);
+  if (rl) p.set('risk_level', rl);
+  if (so) p.set('sort', so);
+  p.set('page', state.page);
+  p.set('page_size', state.page_size);
+  return p;
+}
+
+async function load() {
+  const results = document.getElementById('results');
+  results.className = 'loading';
+  results.innerHTML = '<span class="spinner"></span> Loading projects…';
+
+  const params = buildQuery();
+  history.replaceState(null, '', '/projects?' + params.toString());
+
+  try {
+    const data = await API.get('/api/projects?' + params.toString());
+    document.getElementById('resultMeta').innerHTML =
+      `<strong>${int(data.total)}</strong> projects · reporting period
+       ${periodLabel(data.period)} · page ${data.page} of ${data.pages || 1}`;
+
+    if (!data.items.length) {
+      results.className = 'empty';
+      results.textContent = 'No projects match these filters.';
+      document.getElementById('pager').innerHTML = '';
+      return;
+    }
+
+    results.className = '';
+    results.innerHTML = `
+      <table class="data responsive">
+        <thead><tr>
+          <th>Project</th><th>State</th><th>Sector</th>
+          <th class="num">Risk</th><th>Level</th><th>Trend</th>
+          <th class="num">Physical</th><th class="num">Revised cost</th>
+          <th class="num">Delay</th><th class="num">Alerts</th>
+        </tr></thead>
+        <tbody>${data.items.map((p) => `
+          <tr>
+            <td data-label="Project">
+              <a href="/project?code=${p.project_code}"
+                 style="font-weight:600">${esc(p.name.slice(0, 78))}</a>
+              <div class="mono" style="font-size:11.4px;color:var(--faint)">${p.project_code}
+                · ${esc(p.agency.slice(0, 46))}</div>
+            </td>
+            <td data-label="State">${esc(p.state)}</td>
+            <td data-label="Sector">${esc(p.sector)}</td>
+            <td data-label="Risk" class="num">${num(p.risk_score, 1)}</td>
+            <td data-label="Level">${badge(p.risk_level)}</td>
+            <td data-label="Trend">${trendLabel(p.trend)}</td>
+            <td data-label="Physical" class="num">${pct(p.physical_progress)}</td>
+            <td data-label="Revised cost" class="num">${crore(p.revised_cost_cr)}</td>
+            <td data-label="Delay" class="num">${p.schedule_delay_months === null
+              ? UNKNOWN_HTML : months(p.schedule_delay_months)}</td>
+            <td data-label="Alerts" class="num">${p.open_alerts || '—'}</td>
+          </tr>`).join('')}
+        </tbody></table>`;
+
+    renderPager(data);
+  } catch (err) {
+    results.className = '';
+    results.innerHTML = `<div class="notice notice-warn">${esc(err.message)}</div>`;
+  }
+}
+
+function renderPager(data) {
+  const pager = document.getElementById('pager');
+  if (data.pages <= 1) { pager.innerHTML = ''; return; }
+  const cur = data.page;
+  const pages = [];
+  const push = (n) => pages.push(
+    `<button ${n === cur ? 'aria-current="true"' : ''} onclick="goPage(${n})">${n}</button>`);
+
+  pager.innerHTML =
+    `<button onclick="goPage(${cur - 1})" ${cur === 1 ? 'disabled' : ''}>Previous</button>`;
+  push(1);
+  if (cur > 4) pages.push('<span style="color:var(--faint)">…</span>');
+  for (let n = Math.max(2, cur - 2); n <= Math.min(data.pages - 1, cur + 2); n++) push(n);
+  if (cur < data.pages - 3) pages.push('<span style="color:var(--faint)">…</span>');
+  if (data.pages > 1) push(data.pages);
+  pager.innerHTML += pages.join('')
+    + `<button onclick="goPage(${cur + 1})" ${cur === data.pages ? 'disabled' : ''}>Next</button>`;
+}
+
+function goPage(n) { state.page = n; load(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+let fqSearchTimer = null;
+
+async function fetchFqSuggestions(query = '') {
+  const box = document.getElementById('fqSuggestBox');
+  if (!box) return;
+  box.style.display = 'block';
+  box.innerHTML = '<div style="padding:8px;font-size:12px;color:var(--muted)"><span class="spinner"></span> Searching register…</div>';
+  
+  try {
+    const q = (query || '').trim();
+    const endpoint = q ? `/api/projects?page_size=10&q=${encodeURIComponent(q)}` : `/api/projects?page_size=10&sort=risk_desc`;
+    const r = await API.get(endpoint);
+    const items = r.items || [];
+    
+    if (!items.length) {
+      box.innerHTML = '<div style="color:var(--muted);padding:8px;font-size:12px">No matching projects found.</div>';
+      return;
+    }
+    
+    const headerTitle = q ? 'Matching Projects' : '⚡ Recommended Projects (High Risk)';
+    box.innerHTML = `
+      <div style="font-size:11px;font-weight:700;color:var(--muted);padding:4px 8px;border-bottom:1px solid var(--border-soft);margin-bottom:4px">${headerTitle}</div>
+      ${items.map(p => `
+        <div style="padding:8px;border-bottom:1px solid var(--border-soft);cursor:pointer;transition:background 0.15s ease"
+          onmouseover="this.style.background='var(--surface-alt)'" onmouseout="this.style.background='transparent'"
+          onclick="selectFqProject('${p.project_code}', '${esc(p.name.replace(/'/g, "\\'"))}')">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <strong style="font-size:12.8px;color:var(--navy)">${esc(p.name)}</strong>
+            ${badge(p.risk_level)}
+          </div>
+          <div style="color:var(--muted);font-size:11.8px;margin-top:2px">
+            <span class="mono" style="font-weight:600">#${p.project_code}</span> · ${esc(p.state || '—')} · ${esc(p.sector || '—')}
+          </div>
+        </div>
+      `).join('')}
+    `;
+  } catch (err) {
+    box.innerHTML = `<div style="color:var(--severe);padding:8px;font-size:12px">Could not load suggestions: ${esc(err.message)}</div>`;
+  }
+}
+
+function selectFqProject(code, name) {
+  const fqInput = document.getElementById('fq');
+  if (fqInput) fqInput.value = code;
+  const box = document.getElementById('fqSuggestBox');
+  if (box) box.style.display = 'none';
+  state.page = 1;
+  load();
+}
+
+document.getElementById('fq').addEventListener('focus', () => {
+  fetchFqSuggestions(document.getElementById('fq').value);
+});
+
+document.getElementById('fq').addEventListener('input', (e) => {
+  clearTimeout(fqSearchTimer);
+  fqSearchTimer = setTimeout(() => fetchFqSuggestions(e.target.value), 200);
+});
+
+document.addEventListener('click', (e) => {
+  const input = document.getElementById('fq');
+  const box = document.getElementById('fqSuggestBox');
+  if (input && box && !input.contains(e.target) && !box.contains(e.target)) {
+    box.style.display = 'none';
+  }
+});
+
+(async function () {
+  try {
+    const f = await API.get('/api/projects/filters');
+    const fill = (id, values) => {
+      const el = document.getElementById(id);
+      values.forEach((v) => el.insertAdjacentHTML('beforeend',
+        `<option value="${esc(v)}">${esc(v)}</option>`));
+    };
+    fill('fstate', f.states);
+    fill('fsector', f.sectors);
+    fill('frisk', f.risk_levels);
+  } catch { /* filters are optional */ }
+
+  readParams();
+  load();
+
+  document.getElementById('applyBtn').onclick = () => {
+    const box = document.getElementById('fqSuggestBox');
+    if (box) box.style.display = 'none';
+    state.page = 1;
+    load();
+  };
+  document.getElementById('resetBtn').onclick = () => { location.href = '/projects'; };
+  document.getElementById('fq').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const box = document.getElementById('fqSuggestBox');
+      if (box) box.style.display = 'none';
+      state.page = 1;
+      load();
+    }
+  });
+  ['fstate', 'fsector', 'frisk', 'fsort'].forEach((id) =>
+    document.getElementById(id).addEventListener('change', () => { state.page = 1; load(); }));
+})();
+</script>
+</body>
+</html>

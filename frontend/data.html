@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Data Quality Centre — PAIMANA</title>
+<link rel="stylesheet" href="/static/css/paimana.css?v=2"/>
+</head>
+<body>
+<main id="main">
+  <div class="page-head">
+    <div class="wrap">
+      <div class="breadcrumb"><a href="/">Home</a> › Data Quality Centre</div>
+      <h1>Data Quality Centre</h1>
+      <p>What the platform knows, what it does not, and where every figure came from.</p>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:26px">
+    <div class="wrap">
+      <div class="grid grid-4" id="dqCards"><div class="loading">Loading…</div></div>
+
+      <div class="card" style="margin-top:22px">
+        <div class="card-head"><h3>Why there is no trained risk model</h3></div>
+        <p style="font-size:13.6px;margin-top:0">The ingested corpus covers four consecutive
+          monthly reports. That yields three period-to-period transitions and
+          <strong>no observed project completions</strong>, so there is no outcome label a
+          supervised model could legitimately learn from.</p>
+        <p style="font-size:13.6px">A model trained here would either learn a rule that was
+          written by hand (circular reasoning), or latch onto noise. PAIMANA therefore uses a
+          fully deterministic engine in which every point of a risk score is attributable to a
+          named driver backed by a source value. The conditions under which a learned model
+          becomes defensible are set out in <span class="mono">docs/ARCHITECTURE.md</span>.</p>
+      </div>
+
+      <h2 id="sourcesHeader" style="font-size:19px;color:var(--navy);margin:34px 0 6px;font-weight:800">
+        Source Documents</h2>
+      <div style="width:44px;height:3px;background:var(--orange);margin-bottom:16px"></div>
+      <div class="table-wrap"><div id="sourcesContainer" class="loading">Loading…</div></div>
+
+      <h2 style="font-size:19px;color:var(--navy);margin:34px 0 6px;font-weight:800">
+        Open Data Quality Issues</h2>
+      <div style="width:44px;height:3px;background:var(--orange);margin-bottom:16px"></div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="filters">
+          <div class="field"><label for="fType">Issue type</label>
+            <select id="fType"><option value="">All types</option></select></div>
+          <div class="field"><label for="fSev">Severity</label>
+            <select id="fSev"><option value="">All</option><option>HIGH</option>
+              <option>MEDIUM</option><option>LOW</option></select></div>
+        </div>
+      </div>
+      <div id="issues" class="loading">Loading…</div>
+
+      <div class="card" style="margin-top:26px" id="uploadCard"></div>
+    </div>
+  </section>
+</main>
+
+<script src="/static/js/paimana.js?v=2"></script>
+<script>
+renderChrome('/data');
+
+const ISSUE_TEXT = {
+  MISSING_FIELD: 'A field was absent in the source. Shown as UNKNOWN rather than defaulted.',
+  UNMAPPED_AGENCY: 'The executing agency is not in the reviewed ministry/sector lookup, so the sector stays UNKNOWN.',
+  DUPLICATE_ROW_IN_REPORT: 'The project appears twice in one report (usually also listed in the North-East regional table).',
+  CONFLICTING_VALUE: 'A value differs from an earlier report. The existing value is retained pending review.',
+  LOW_EXTRACTION_CONFIDENCE: 'The row parsed with reduced confidence and warrants a manual check.',
+  UNIDENTIFIABLE_ROW: 'The row could not be tied to a project identity and was not ingested.',
+};
+
+async function loadIssues() {
+  const el = document.getElementById('issues');
+  el.className = 'loading';
+  el.innerHTML = '<span class="spinner"></span> Loading open issues…';
+  const p = new URLSearchParams({ limit: '60' });
+  const t = document.getElementById('fType')?.value || '';
+  const s = document.getElementById('fSev')?.value || '';
+  if (t) p.set('issue_type', t);
+  if (s) p.set('severity', s);
+  try {
+    const r = await API.get('/api/data-quality/issues?' + p.toString());
+    el.className = '';
+    if (!r.items || r.items.length === 0) {
+      el.innerHTML = `
+        <div style="font-size:13px;color:var(--muted);margin-bottom:10px">Showing 0 of ${int(r.total)} open issues</div>
+        <div class="card" style="text-align:center;padding:24px;color:var(--muted)">
+          ✅ <strong>No open data quality issues</strong> found for the selected filters.
+        </div>`;
+      return;
+    }
+    el.innerHTML = `<div style="font-size:13px;color:var(--muted);margin-bottom:10px">
+        Showing ${r.items.length} of ${int(r.total)} open issues</div>
+      <div class="table-wrap"><table class="data responsive">
+        <thead><tr><th>Type</th><th>Field</th><th>Severity</th><th>Project</th>
+          <th>Description</th><th>Period</th></tr></thead>
+        <tbody>${r.items.map((i) => `<tr>
+          <td data-label="Type" class="mono" style="font-size:11.6px">${esc(i.issue_type)}</td>
+          <td data-label="Field">${esc(i.field || '—')}</td>
+          <td data-label="Severity">${badge(i.severity)}</td>
+          <td data-label="Project">${i.project
+            ? `<a href="/project?code=${i.project.project_code}">${esc(
+                i.project.name.slice(0, 46))}</a>` : '—'}</td>
+          <td data-label="Description" style="font-size:12.4px">${esc(i.description || '')}</td>
+          <td data-label="Period">${periodLabel(i.report_period)}</td>
+        </tr>`).join('')}</tbody></table></div>`;
+  } catch (err) {
+    el.className = '';
+    el.innerHTML = `<div class="notice notice-warn">${esc(err.message)}</div>`;
+  }
+}
+
+(async function () {
+  loadIssues();
+  try {
+    const [s, src] = await Promise.all([
+      API.get('/api/data-quality/summary'),
+      API.get('/api/data-quality/sources'),
+    ]);
+
+    document.getElementById('dqCards').innerHTML = `
+      <div class="stat-card accent-green"><div class="label">Data quality score</div>
+        <div class="value">${num(s.data_quality_score, 1)}</div>
+        <div class="sub">Completeness minus issue penalty</div></div>
+      <div class="stat-card"><div class="label">Snapshots stored</div>
+        <div class="value">${int(s.total_snapshots)}</div>
+        <div class="sub">${int(s.total_projects)} projects</div></div>
+      <div class="stat-card accent-amber"><div class="label">Awaiting review</div>
+        <div class="value">${int(s.snapshots_awaiting_review)}</div>
+        <div class="sub">Flagged DATA QUALITY REVIEW</div></div>
+      <div class="stat-card accent-orange"><div class="label">Open issues</div>
+        <div class="value">${int(s.open_issues_total)}</div>
+        <div class="sub">${int(s.projects_unknown_sector)} unknown sector ·
+          ${int(s.projects_unknown_state)} unknown state</div></div>`;
+
+    const sel = document.getElementById('fType');
+    Object.keys(s.open_issues_by_type).sort().forEach((t) =>
+      sel.insertAdjacentHTML('beforeend',
+        `<option value="${t}">${t} (${s.open_issues_by_type[t]})</option>`));
+
+    document.getElementById('sourcesContainer').className = '';
+    document.getElementById('sourcesContainer').innerHTML = `<table class="data responsive">
+      <thead><tr><th>Document</th><th>Report</th><th class="num">Pages</th>
+        <th class="num">Snapshots</th><th>SHA-256</th><th>Ingested</th></tr></thead>
+      <tbody>${src.sources.map((x) => `<tr>
+        <td data-label="Document" class="mono" style="font-size:11.8px">${esc(x.filename)}
+          ${x.is_demo ? '<span class="badge badge-demo">DEMO</span>' : ''}</td>
+        <td data-label="Report">${esc(x.report_label || x.report_period)}</td>
+        <td data-label="Pages" class="num">${int(x.page_count)}</td>
+        <td data-label="Snapshots" class="num">${int(x.snapshots)}</td>
+        <td data-label="SHA-256" class="mono" style="font-size:11px">${esc(x.sha256.slice(0, 24))}…</td>
+        <td data-label="Ingested">${esc((x.ingested_at || '').slice(0, 10))}
+          by ${esc(x.ingested_by || '—')}</td>
+      </tr>`).join('')}</tbody></table>
+      <div class="notice" style="margin:14px">Each document is hashed on ingestion, so
+        re-uploading the same file is detected and rejected as a duplicate rather than
+        double-counting its projects.</div>`;
+
+    const user = API.user();
+    document.getElementById('uploadCard').innerHTML = user
+      ? `<div class="card-head"><h3>Ingest a new Flash Report</h3>
+           <span class="meta">Signed in as ${esc(user.username)}</span></div>
+         <div class="field"><label for="pdf">Flash Report PDF</label>
+           <input id="pdf" type="file" accept="application/pdf"/>
+           <div class="hint">Validated by extension, MIME type, magic bytes and size before
+             any parsing occurs.</div></div>
+         <div id="upErr"></div>
+         <button class="btn btn-primary" id="upBtn">Upload and ingest</button>`
+      : `<div class="card-head"><h3>Ingest a new Flash Report</h3></div>
+         <div class="notice">Sign in as an analyst to upload a report.</div>`;
+
+    const btn = document.getElementById('upBtn');
+    if (btn) btn.onclick = async () => {
+      const f = document.getElementById('pdf').files[0];
+      if (!f) return;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Ingesting — this takes about a minute…';
+      const fd = new FormData();
+      fd.append('file', f);
+      try {
+        const res = await fetch('/api/ingest/upload', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + API.token() },
+          body: fd,
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.detail || 'Upload failed');
+        document.getElementById('upErr').innerHTML =
+          `<div class="notice">${esc(body.status)} — ${int(body.snapshots_created || 0)}
+            snapshots created, ${int(body.projects_created || 0)} new projects.</div>`;
+        setTimeout(() => location.reload(), 1800);
+      } catch (err) {
+        document.getElementById('upErr').innerHTML =
+          `<div class="notice notice-warn">${esc(err.message)}</div>`;
+        btn.disabled = false;
+        btn.textContent = 'Upload and ingest';
+      }
+    };
+
+    loadIssues();
+    ['fType', 'fSev'].forEach((id) =>
+      document.getElementById(id).addEventListener('change', loadIssues));
+
+    if (location.hash === '#sources') {
+      document.getElementById('sourcesHeader').scrollIntoView();
+    }
+  } catch (err) {
+    document.getElementById('dqCards').innerHTML =
+      `<div class="notice notice-warn">${esc(err.message)}</div>`;
+  }
+})();
+</script>
+</body>
+</html>

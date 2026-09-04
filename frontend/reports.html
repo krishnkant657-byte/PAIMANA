@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Reports — PAIMANA</title>
+<link rel="stylesheet" href="/static/css/paimana.css?v=2"/>
+</head>
+<body>
+<main id="main">
+  <div class="page-head">
+    <div class="wrap">
+      <div class="breadcrumb"><a href="/">Home</a> › Reports</div>
+      <h1>Reports</h1>
+      <p>Generate monitoring and executive reports as PDFs. Every report lists the source
+         documents it was built from.</p>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:26px">
+    <div class="wrap">
+      <div class="grid grid-2">
+        <div class="card">
+          <div class="card-head"><h3>Generate a report</h3></div>
+          <div id="genPanel"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Report types</h3></div>
+          <dl class="kv">
+            <dt>Executive brief</dt><dd>National position and trend, for senior review.</dd>
+            <dt>Monthly monitoring</dt><dd>Full period report with highest-risk projects and
+              sector position.</dd>
+            <dt>National risk</dt><dd>Risk-focused view with the top 20 projects by composite
+              score.</dd>
+            <dt>Project report</dt><dd>Single project: record, indicators, history, drivers,
+              alerts, interventions and provenance.</dd>
+          </dl>
+        </div>
+      </div>
+
+      <h2 style="font-size:19px;color:var(--navy);margin:34px 0 6px;font-weight:800">
+        Generated Reports</h2>
+      <div style="width:44px;height:3px;background:var(--orange);margin-bottom:16px"></div>
+      <div class="table-wrap"><div id="list" class="loading">Loading…</div></div>
+    </div>
+  </section>
+</main>
+
+<script src="/static/js/paimana.js?v=2"></script>
+<script>
+renderChrome('/reports');
+
+async function loadList() {
+  const el = document.getElementById('list');
+  try {
+    const r = await API.get('/api/reports');
+    el.className = '';
+    el.innerHTML = r.items.length ? `<table class="data responsive">
+      <thead><tr><th>Title</th><th>Type</th><th>Period</th><th>Generated</th><th>By</th>
+        <th></th></tr></thead>
+      <tbody>${r.items.map((x) => `<tr>
+        <td data-label="Title">${esc(x.title || '—')}</td>
+        <td data-label="Type"><span class="badge badge-INFO">${esc(x.report_type)}</span></td>
+        <td data-label="Period">${x.report_period ? periodLabel(x.report_period) : '—'}</td>
+        <td data-label="Generated">${esc((x.generated_at || '').slice(0, 16).replace('T', ' '))}</td>
+        <td data-label="By">${esc(x.generated_by || '—')}</td>
+        <td data-label=""><button class="btn btn-outline btn-sm"
+          onclick="download(${x.id},'${esc(x.filename)}')">Download</button></td>
+      </tr>`).join('')}</tbody></table>`
+      : '<div class="empty">No reports generated yet.</div>';
+  } catch (err) {
+    el.className = '';
+    el.innerHTML = `<div class="notice notice-warn">${esc(err.message)}</div>`;
+  }
+}
+
+async function download(id, filename) {
+  try {
+    const res = await fetch(`/api/reports/${id}/download`,
+      { headers: { Authorization: 'Bearer ' + API.token() } });
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({}));
+      throw new Error(b.detail || 'Download failed. Sign in to download reports.');
+    }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (err) { alert(err.message); }
+}
+
+(function () {
+  const user = API.user();
+  const panel = document.getElementById('genPanel');
+  if (!user) {
+    panel.innerHTML = '<div class="notice">Sign in as an analyst to generate reports.</div>';
+    loadList();
+    return;
+  }
+  panel.innerHTML = `
+    <div class="field"><label for="rType">Report type</label>
+      <select id="rType">
+        <option value="EXECUTIVE_BRIEF">Executive brief</option>
+        <option value="MONTHLY_MONITORING">Monthly monitoring report</option>
+        <option value="RISK">National risk report</option>
+        <option value="PROJECT">Single project report</option>
+      </select></div>
+    <div class="field" id="codeField" style="display:none">
+      <label for="rCode">Project code</label>
+      <input id="rCode" placeholder="e.g. 705368"/></div>
+    <div class="field"><label for="rPeriod">Reporting period</label>
+      <select id="rPeriod"></select></div>
+    <div id="rErr"></div>
+    <button class="btn btn-primary" id="rGo">Generate PDF</button>`;
+
+  document.getElementById('rType').addEventListener('change', (e) => {
+    document.getElementById('codeField').style.display =
+      e.target.value === 'PROJECT' ? '' : 'none';
+  });
+
+  API.get('/api/projects/filters').then((f) => {
+    const sel = document.getElementById('rPeriod');
+    f.periods.slice().reverse().forEach((p) =>
+      sel.insertAdjacentHTML('beforeend', `<option value="${p}">${periodLabel(p)}</option>`));
+  });
+
+  document.getElementById('rGo').onclick = async () => {
+    const btn = document.getElementById('rGo');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Generating…';
+    try {
+      const type = document.getElementById('rType').value;
+      const r = await API.post('/api/reports/generate', {
+        report_type: type,
+        project_code: type === 'PROJECT'
+          ? document.getElementById('rCode').value.trim() : null,
+        period: document.getElementById('rPeriod').value || null,
+      });
+      document.getElementById('rErr').innerHTML =
+        `<div class="notice">Generated: ${esc(r.title)}</div>`;
+      await loadList();
+      download(r.id, r.filename);
+    } catch (err) {
+      document.getElementById('rErr').innerHTML =
+        `<div class="notice notice-warn">${esc(err.message)}</div>`;
+    }
+    btn.disabled = false;
+    btn.textContent = 'Generate PDF';
+  };
+
+  loadList();
+})();
+</script>
+</body>
+</html>

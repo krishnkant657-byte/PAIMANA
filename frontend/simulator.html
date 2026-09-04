@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Scenario Lab &amp; Pre-Approval Simulator — PAIMANA</title>
+<link rel="stylesheet" href="/static/css/paimana.css?v=2"/>
+</head>
+<body>
+<main id="main">
+  <div class="page-head">
+    <div class="wrap">
+      <div class="breadcrumb"><a href="/">Home</a> › Simulator</div>
+      <h1>Scenario Lab &amp; Pre-Approval Simulator</h1>
+      <p>Test how the risk model reads a project under changed inputs, and benchmark a
+         proposed project against comparable ongoing ones.</p>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:26px">
+    <div class="wrap">
+      <div class="notice notice-sim">
+        <strong>Every output on this page is a SIMULATED SCENARIO.</strong> Results are a
+        deterministic recalculation of published indicators under modified inputs, or a
+        comparison against real peer statistics. They are not forecasts, and PAIMANA does
+        not publish a probability of failure — the ingested corpus contains no completed-project
+        outcomes against which such a model could be trained or validated.
+      </div>
+
+      <div class="tabs" style="margin-top:22px">
+        <button data-tab="lab" class="active" onclick="showTab('lab')">Scenario Lab</button>
+        <button data-tab="pre" onclick="showTab('pre')">Pre-Approval Simulator</button>
+      </div>
+
+      <div data-panel="lab">
+        <div class="grid grid-2">
+          <div class="card">
+            <div class="field" style="position:relative">
+              <label for="sCode">Project</label>
+              <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
+                <button type="button" class="btn btn-secondary btn-sm" style="font-size:12px;padding:4px 10px" onclick="pickRandomProject()">🎲 Pick High Risk Project</button>
+              </div>
+              <input id="sCode" placeholder="Search by name or code (click to see suggestions)" autocomplete="off" style="width:100%"/>
+              <div id="suggestBox" style="position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid var(--border, #cbd5e1);box-shadow:0 8px 24px rgba(0,0,0,0.12);border-radius:6px;z-index:1000;max-height:280px;overflow-y:auto;display:none;margin-top:4px;padding:6px"></div>
+              <div id="selectedTag" style="margin-top:6px;font-size:12.5px"></div>
+              <div class="hint">Click input to see recommendations or start typing to search.</div>
+            </div>
+
+            <div class="field"><label for="sCost">Change to revised cost
+              (<span id="sCostV">0</span>%)</label>
+              <input id="sCost" type="range" min="-50" max="200" value="0" step="5"/></div>
+            <div class="field"><label for="sSched">Change to completion date
+              (<span id="sSchedV">0</span> days)</label>
+              <input id="sSched" type="range" min="-730" max="1460" value="0" step="30"/></div>
+            <div class="field"><label for="sProg">Change to physical progress
+              (<span id="sProgV">0</span> pp)</label>
+              <input id="sProg" type="range" min="-50" max="50" value="0" step="1"/></div>
+            <div class="field"><label for="sExp">Change to expenditure
+              (<span id="sExpV">0</span>%)</label>
+              <input id="sExp" type="range" min="-50" max="200" value="0" step="5"/></div>
+            <button class="btn btn-primary" id="runScenario" disabled>Run scenario</button>
+          </div>
+          <div id="labOut"><div class="card"><div class="empty">
+            Select a project and run a scenario to see how the risk model responds.</div></div></div>
+        </div>
+      </div>
+
+      <div data-panel="pre" style="display:none">
+        <div class="grid grid-2">
+          <div class="card">
+            <div class="card-head"><h3>Proposed project parameters</h3></div>
+            <div class="field"><label for="pCost">Estimated cost (₹ crore)</label>
+              <input id="pCost" type="number" value="1200" min="1"/></div>
+            <div class="field"><label for="pDur">Sanctioned duration (months)</label>
+              <input id="pDur" type="number" value="48" min="1" max="360"/></div>
+            <div class="field"><label for="pSector">Sector</label>
+              <select id="pSector"><option value="">Any sector</option></select></div>
+            <div class="field"><label for="pState">State</label>
+              <select id="pState"><option value="">Any state</option></select></div>
+            <div class="field"><label for="pY1">Expected first-year physical progress (%)</label>
+              <input id="pY1" type="number" value="20" min="0" max="100"/>
+              <div class="hint">Optional. Used to test whether the schedule is back-loaded.</div></div>
+            <button class="btn btn-primary" id="runPre">Run benchmark</button>
+          </div>
+          <div id="preOut"><div class="card"><div class="empty">
+            Enter parameters and run the benchmark.</div></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="/static/js/paimana.js?v=4.0"></script>
+<script>
+renderChrome('/simulator');
+let selectedCode = null;
+
+function showTab(name) {
+  document.querySelectorAll('.tabs button').forEach((b) =>
+    b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('[data-panel]').forEach((p) =>
+    p.style.display = p.dataset.panel === name ? '' : 'none');
+}
+
+['sCost:sCostV', 'sSched:sSchedV', 'sProg:sProgV', 'sExp:sExpV'].forEach((pair) => {
+  const [a, b] = pair.split(':');
+  document.getElementById(a).addEventListener('input', (e) =>
+    document.getElementById(b).textContent = e.target.value);
+});
+
+let searchTimer = null;
+let cachedProjects = [];
+
+async function fetchSuggestions(query = '') {
+  const box = document.getElementById('suggestBox');
+  box.style.display = 'block';
+  box.innerHTML = '<div style="padding:8px;font-size:12px;color:var(--muted)"><span class="spinner"></span> Loading project suggestions…</div>';
+  
+  try {
+    const q = (query || '').trim();
+    const endpoint = q ? `/api/projects?page_size=10&q=${encodeURIComponent(q)}` : `/api/projects?page_size=10&sort=risk_desc`;
+    const r = await API.get(endpoint);
+    cachedProjects = r.items || [];
+    
+    if (!cachedProjects.length) {
+      box.innerHTML = '<div style="color:var(--muted);padding:8px;font-size:12px">No matching projects found.</div>';
+      return;
+    }
+    
+    const headerTitle = q ? 'Matching Projects' : '⚡ Recommended Projects (High Risk)';
+    box.innerHTML = `
+      <div style="font-size:11px;font-weight:700;color:var(--muted);padding:4px 8px;border-bottom:1px solid var(--border-soft);margin-bottom:4px">${headerTitle}</div>
+      ${cachedProjects.map(p => `
+        <div style="padding:8px;border-bottom:1px solid var(--border-soft);cursor:pointer;transition:background 0.15s ease"
+          onmouseover="this.style.background='var(--surface-alt)'" onmouseout="this.style.background='transparent'"
+          onclick="pickProject('${p.project_code}', '${esc(p.name.replace(/'/g, "\\'"))}')">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <strong style="font-size:12.8px;color:var(--navy)">${esc(p.name)}</strong>
+            ${badge(p.risk_level)}
+          </div>
+          <div style="color:var(--muted);font-size:11.8px;margin-top:2px">
+            <span class="mono" style="font-weight:600">#${p.project_code}</span> · ${esc(p.state || '—')} · ${esc(p.sector || '—')}
+          </div>
+        </div>
+      `).join('')}
+    `;
+  } catch (err) {
+    box.innerHTML = `<div style="color:var(--severe);padding:8px;font-size:12px">Could not load suggestions: ${esc(err.message)}</div>`;
+  }
+}
+
+document.getElementById('sCode').addEventListener('focus', () => {
+  fetchSuggestions(document.getElementById('sCode').value);
+});
+
+document.getElementById('sCode').addEventListener('input', (e) => {
+  clearTimeout(searchTimer);
+  selectedCode = null;
+  document.getElementById('runScenario').disabled = true;
+  document.getElementById('selectedTag').innerHTML = '';
+  searchTimer = setTimeout(() => fetchSuggestions(e.target.value), 200);
+});
+
+// Close suggest box on click away
+document.addEventListener('click', (e) => {
+  const input = document.getElementById('sCode');
+  const box = document.getElementById('suggestBox');
+  if (input && box && !input.contains(e.target) && !box.contains(e.target)) {
+    box.style.display = 'none';
+  }
+});
+
+function pickProject(code, name) {
+  selectedCode = code;
+  document.getElementById('sCode').value = `${name} (#${code})`;
+  document.getElementById('suggestBox').style.display = 'none';
+  document.getElementById('selectedTag').innerHTML = `
+    <span class="badge badge-LOW">Selected: #${code} — ${esc(name)}</span>
+  `;
+  document.getElementById('runScenario').disabled = false;
+}
+
+async function pickRandomProject() {
+  try {
+    const r = await API.get('/api/projects?page_size=20&sort=risk_desc');
+    const items = r.items || [];
+    if (!items.length) return;
+    const randomItem = items[Math.floor(Math.random() * items.length)];
+    pickProject(randomItem.project_code, randomItem.name);
+  } catch (err) {
+    alert('Could not pick random project: ' + err.message);
+  }
+}
+
+document.getElementById('runScenario').onclick = async () => {
+  const out = document.getElementById('labOut');
+  out.innerHTML = '<div class="card"><div class="loading"><span class="spinner"></span> Running…</div></div>';
+  try {
+    const r = await API.post('/api/scenario/run', {
+      project_code: selectedCode,
+      cost_change_pct: Number(document.getElementById('sCost').value),
+      schedule_change_days: Number(document.getElementById('sSched').value),
+      progress_change_pp: Number(document.getElementById('sProg').value),
+      expenditure_change_pct: Number(document.getElementById('sExp').value),
+    });
+    const delta = r.difference.risk_score;
+    out.innerHTML = `
+      <div class="card">
+        <div class="card-head"><h3>${esc(r.project_name.slice(0, 54))}</h3>
+          <span class="badge badge-sim">SIMULATED SCENARIO</span></div>
+        <div class="grid grid-2" style="gap:14px">
+          <div class="stat-card" style="border-top-color:${riskColour(r.current.risk_level)}">
+            <div class="label">Current risk</div>
+            <div class="value">${num(r.current.risk_score, 1)}</div>
+            <div class="sub">${badge(r.current.risk_level)}</div></div>
+          <div class="stat-card" style="border-top-color:${riskColour(r.scenario.risk_level)}">
+            <div class="label">Scenario risk</div>
+            <div class="value">${num(r.scenario.risk_score, 1)}</div>
+            <div class="sub">${badge(r.scenario.risk_level)}</div></div>
+        </div>
+        <div style="text-align:center;margin:16px 0;font-size:15px;font-weight:700;
+          color:${delta > 0 ? 'var(--high)' : delta < 0 ? 'var(--low)' : 'var(--muted)'}">
+          ${delta > 0 ? '▲' : delta < 0 ? '▼' : '—'} ${num(Math.abs(delta || 0), 1)} points
+        </div>
+        <table class="data"><thead><tr><th>Indicator</th><th class="num">Current</th>
+          <th class="num">Scenario</th></tr></thead><tbody>
+          <tr><td>Revised cost</td><td class="num">${crore(r.current.revised_cost_cr, 2)}</td>
+            <td class="num">${crore(r.scenario.revised_cost_cr, 2)}</td></tr>
+          <tr><td>Expenditure</td><td class="num">${crore(r.current.expenditure_cr, 2)}</td>
+            <td class="num">${crore(r.scenario.expenditure_cr, 2)}</td></tr>
+          <tr><td>Physical progress</td><td class="num">${pct(r.current.physical_progress)}</td>
+            <td class="num">${pct(r.scenario.physical_progress)}</td></tr>
+          <tr><td>Financial progress</td><td class="num">${pct(r.current.financial_progress)}</td>
+            <td class="num">${pct(r.scenario.financial_progress)}</td></tr>
+          <tr><td>Cost escalation</td><td class="num">${pct(r.current.cost_escalation_pct, 2)}</td>
+            <td class="num">${pct(r.scenario.cost_escalation_pct, 2)}</td></tr>
+          <tr><td>Schedule delay</td><td class="num">${r.current.schedule_delay_months ?? '—'} mo</td>
+            <td class="num">${r.scenario.schedule_delay_months ?? '—'} mo</td></tr>
+        </tbody></table>
+        <h4 style="font-size:13px;color:var(--navy);margin:18px 0 8px">Scenario risk drivers</h4>
+        ${r.scenario_drivers.map((d) => `<div class="driver">
+          <div class="driver-head"><strong>${esc(d.label)}</strong>
+            <span class="pts">+${num(d.contribution, 1)}</span></div>
+          <p>${esc(d.detail)}</p></div>`).join('') || '<div class="empty">No active drivers.</div>'}
+        <div class="notice notice-sim">${esc(r.limitation)}</div>
+      </div>`;
+  } catch (err) {
+    out.innerHTML = `<div class="notice notice-warn">${esc(err.message)}</div>`;
+  }
+};
+
+document.getElementById('runPre').onclick = async () => {
+  const out = document.getElementById('preOut');
+  out.innerHTML = '<div class="card"><div class="loading"><span class="spinner"></span> Benchmarking…</div></div>';
+  try {
+    const r = await API.post('/api/simulator/pre-approval', {
+      estimated_cost_cr: Number(document.getElementById('pCost').value),
+      duration_months: Number(document.getElementById('pDur').value),
+      sector: document.getElementById('pSector').value || null,
+      state: document.getElementById('pState').value || null,
+      expected_progress_year1: Number(document.getElementById('pY1').value) || null,
+    });
+    const b = r.benchmark;
+    out.innerHTML = `
+      <div class="card">
+        <div class="card-head"><h3>Benchmark result</h3>
+          <span class="badge badge-sim">SIMULATED SCENARIO</span></div>
+        ${b.sufficient ? `
+        <div class="grid grid-2" style="gap:14px">
+          <div class="stat-card" style="border-top-color:${riskColour(r.indicative_risk_band)}">
+            <div class="label">Indicative risk band</div>
+            <div class="value" style="font-size:22px">${badge(r.indicative_risk_band)}</div>
+            <div class="sub">Cohort median ${num(r.indicative_risk_score, 1)}</div></div>
+          <div class="stat-card"><div class="label">Comparable projects</div>
+            <div class="value">${int(b.count)}</div>
+            <div class="sub">${esc(b.scope)}</div></div>
+        </div>
+        <table class="data" style="margin-top:16px"><thead><tr><th>Measure</th>
+          <th class="num">Your proposal</th><th class="num">Cohort median</th>
+          <th class="num">Cohort 90th pct</th></tr></thead><tbody>
+          <tr><td>Cost</td><td class="num">${crore(r.inputs.estimated_cost_cr)}</td>
+            <td class="num">${r.projected_cost_cr ? crore(r.projected_cost_cr)
+              + ' projected' : '—'}</td>
+            <td class="num">${pct(b.cost_escalation_pct.p90, 2)} escalation</td></tr>
+          <tr><td>Duration</td><td class="num">${r.inputs.duration_months} mo</td>
+            <td class="num">${r.projected_duration_months ?
+              r.projected_duration_months + ' mo projected' : '—'}</td>
+            <td class="num">${num(b.schedule_delay_months.p90, 1)} mo slip</td></tr>
+          <tr><td>Risk score</td><td class="num">—</td>
+            <td class="num">${num(b.risk_score.median, 1)}</td>
+            <td class="num">${num(b.risk_score.p90, 1)}</td></tr>
+          <tr><td>Physical progress</td><td class="num">—</td>
+            <td class="num">${pct(b.physical_progress.median)}</td>
+            <td class="num">${pct(b.physical_progress.p90)}</td></tr>
+        </tbody></table>` : `
+        <div class="notice notice-warn">Only ${int(b.count)} comparable project(s) found for
+          ${esc(b.scope)} — too few to produce a reliable benchmark. Widen the sector or state
+          filter, or treat the result below as indicative only.</div>`}
+
+        <h4 style="font-size:13px;color:var(--navy);margin:18px 0 8px">Warning indicators</h4>
+        ${r.warning_indicators.length ? r.warning_indicators.map((w) => `
+          <div class="driver"><div class="driver-head">
+            <strong>${esc(w.code.replace(/_/g, ' '))}</strong> ${badge(w.severity)}</div>
+            <p>${esc(w.message)}</p></div>`).join('')
+          : '<div class="empty">No structural warnings raised for these parameters.</div>'}
+
+        ${r.notes.length ? `<div class="notice">${r.notes.map(esc).join('<br/>')}</div>` : ''}
+        <div class="notice notice-sim">${esc(r.explanation)}</div>
+      </div>`;
+  } catch (err) {
+    out.innerHTML = `<div class="notice notice-warn">${esc(err.message)}</div>`;
+  }
+};
+
+(async function () {
+  try {
+    const f = await API.get('/api/projects/filters');
+    f.sectors.forEach((s) => document.getElementById('pSector')
+      .insertAdjacentHTML('beforeend', `<option>${esc(s)}</option>`));
+    f.states.forEach((s) => document.getElementById('pState')
+      .insertAdjacentHTML('beforeend', `<option>${esc(s)}</option>`));
+  } catch { /* optional */ }
+})();
+</script>
+</body>
+</html>

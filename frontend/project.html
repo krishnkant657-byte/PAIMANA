@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Project Digital Twin — PAIMANA</title>
+<link rel="stylesheet" href="/static/css/paimana.css?v=3"/>
+</head>
+<body>
+<main id="main">
+  <div class="page-head">
+    <div class="wrap">
+      <div class="breadcrumb"><a href="/">Home</a> › <a href="/projects">Projects</a> ›
+        <span id="crumb">Project</span></div>
+      <h1 id="pTitle">Loading…</h1>
+      <p id="pSub"></p>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:26px">
+    <div class="wrap">
+      <div id="twin" class="loading"><span class="spinner"></span> Loading project…</div>
+    </div>
+  </section>
+</main>
+
+<script src="/static/js/paimana.js?v=3"></script>
+<script>
+renderChrome('/projects');
+const code = qs('code');
+
+function driverCard(d) {
+  return `<div class="driver">
+    <div class="driver-head"><strong>${esc(d.label)}</strong>
+      <span class="pts">+${num(d.contribution, 1)} of ${num(d.weight, 0)}</span></div>
+    <p>${esc(d.detail)}</p>
+    <div class="ev">${Object.entries(d.evidence || {})
+      .map(([k, v]) => `${esc(k)}=${esc(v)}`).join(' · ')}</div>
+  </div>`;
+}
+
+function decisionSupport(ds, c, trend) {
+  const changed = ds?.what_changed;
+  const delta = trend?.risk_delta;
+  const direction = delta == null ? 'No prior comparison' :
+    `${delta > 0 ? '▲' : delta < 0 ? '▼' : '→'} ${num(Math.abs(delta), 1)} points since ${trend.previous_period}`;
+  const changeItems = changed?.changes?.slice(0, 4).map((x) =>
+    `<li>${esc(x.text)}</li>`).join('') ||
+    '<li>No material metric change was recorded for the previous reporting period.</li>';
+  const recs = (ds?.recommendations || []).map((r) => `
+    <div class="driver">
+      <div class="driver-head"><strong>${esc(r.driver)}</strong>
+        <span class="pts">${esc(r.priority)}</span></div>
+      <p>${esc(r.action)}</p>
+      <div class="ev">Why: ${esc(r.reason)}</div>
+    </div>`).join('');
+  const confidence = ds?.data_confidence;
+  return `<div class="grid grid-2" style="margin-bottom:18px">
+    <div class="card">
+      <div class="card-head"><h3>What changed</h3><span class="meta">${esc(direction)}</span></div>
+      <div class="notice ${delta > 0 ? 'notice-warn' : ''}">
+        <strong>Current risk ${num(c.risk_score, 1)}</strong>
+        ${delta == null ? '' : ` · ${delta > 0 ? 'deteriorated' : delta < 0 ? 'improved' : 'remained stable'}`}
+      </div>
+      <ul class="replay-changes" style="margin-top:10px">${changeItems}</ul>
+    </div>
+    <div class="card">
+      <div class="card-head"><h3>Data confidence</h3><span class="meta">Evidence layer</span></div>
+      <div style="font-size:28px;font-weight:800;color:var(--navy)">${pct(confidence?.completeness_pct, 0)}</div>
+      <p style="font-size:12.8px;color:var(--muted);margin:4px 0 10px">
+        Completeness of the latest snapshot. Risk confidence: ${pct((c.risk_confidence || 0) * 100, 0)}.
+      </p>
+      <div class="ev">${confidence?.source_verified ? 'Source record linked' : 'Source record unavailable'} · ${esc(confidence?.quality_status || 'UNKNOWN')}</div>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:18px">
+    <div class="card-head"><h3>Recommended next actions</h3><span class="meta">Decision support · evidence-driven</span></div>
+    ${recs || '<div class="empty">No intervention recommendation is currently triggered by the active risk drivers.</div>'}
+    <div class="notice">Recommendations are deterministic guidance derived from the active risk drivers. They do not replace administrative judgement.</div>
+  </div>`;
+}
+
+function tab(name, label) {
+  return `<button data-tab="${name}" onclick="showTab('${name}')">${label}</button>`;
+}
+function showTab(name) {
+  document.querySelectorAll('.tabs button').forEach((b) =>
+    b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('[data-panel]').forEach((p) =>
+    p.style.display = p.dataset.panel === name ? '' : 'none');
+}
+
+(async function () {
+  if (!code) {
+    document.getElementById('twin').innerHTML =
+      '<div class="notice notice-warn">No project code supplied.</div>';
+    return;
+  }
+
+  try {
+    const [t, replay] = await Promise.all([
+      API.get('/api/projects/' + encodeURIComponent(code)),
+      API.get('/api/projects/' + encodeURIComponent(code) + '/replay'),
+    ]);
+
+    const p = t.project, c = t.current;
+    document.getElementById('pTitle').textContent = p.name;
+    document.getElementById('crumb').textContent = p.project_code;
+    document.getElementById('pSub').innerHTML =
+      `<span class="mono">${p.project_code}</span> · ${esc(p.agency)} · ${esc(p.state)}
+       · ${esc(p.sector)}${p.is_demo ? ' <span class="badge badge-demo">DEMO DATA</span>' : ''}`;
+
+    const prov = (v, field, fmt) => provLink(fmt ? fmt(v) : (v ?? 'UNKNOWN'),
+      p.project_code, field, c.period);
+
+    document.getElementById('twin').className = 'fade-in';
+    document.getElementById('twin').innerHTML = `
+      <div class="grid grid-4" style="margin-bottom:22px">
+        <div class="stat-card" style="border-top-color:${riskColour(c.risk_level)}">
+          <div class="label">Composite risk</div>
+          <div class="value">${num(c.risk_score, 1)}</div>
+          <div class="sub">${badge(c.risk_level)} · confidence ${pct((c.risk_confidence || 0) * 100, 0)}</div>
+        </div>
+        <div class="stat-card"><div class="label">Physical progress</div>
+          <div class="value">${prov(c.physical_progress, 'physical_progress', (v) => pct(v))}</div>
+          <div class="sub">Financial ${pct(c.financial_progress)}</div></div>
+        <div class="stat-card accent-orange"><div class="label">Revised cost</div>
+          <div class="value" style="font-size:23px">${prov(c.revised_cost_cr, 'revised_cost', (v) => crore(v))}</div>
+          <div class="sub">Approved ${crore(c.original_cost_cr)}</div></div>
+        <div class="stat-card accent-amber"><div class="label">Schedule delay</div>
+          <div class="value">${c.schedule_delay_months === null
+            ? UNKNOWN_HTML : c.schedule_delay_months + ' mo'}</div>
+          <div class="sub">Trend ${t.trend.direction.toLowerCase().replace(/_/g, ' ')}</div></div>
+      </div>
+
+      <div class="tabs">
+        ${tab('overview', 'Overview')}
+        ${tab('drivers', 'Risk drivers')}
+        ${tab('replay', 'Escalation replay')}
+        ${tab('history', 'Snapshot history')}
+        ${tab('alerts', 'Alerts (' + t.alerts.length + ')')}
+        ${tab('interventions', 'Interventions (' + t.interventions.length + ')')}
+        ${tab('quality', 'Data quality')}
+        ${tab('ask', 'Ask about this project')}
+      </div>
+
+      <div data-panel="overview">
+        <div class="grid grid-2">
+          <div class="card">
+            <div class="card-head"><h3>Project record</h3>
+              <span class="meta">${periodLabel(c.period)}</span></div>
+            <dl class="kv">
+              <dt>Project code</dt><dd class="mono">${esc(p.project_code)}</dd>
+              <dt>Executing agency</dt><dd>${esc(p.agency)}</dd>
+              <dt>Ministry</dt><dd>${esc(p.ministry)}</dd>
+              <dt>Sector</dt><dd>${esc(p.sector)}
+                <span class="badge badge-INFO">${p.sector_origin}</span></dd>
+              <dt>State</dt><dd>${prov(p.state, 'state')}
+                <span class="badge badge-INFO">${p.state_origin}</span></dd>
+              ${p.is_multi_state ? `<dt>States covered</dt>
+                <dd>${p.states_list.map(esc).join(', ')}</dd>` : ''}
+              <dt>Approval date</dt><dd>${prov(c.approval_date, 'approval_date')}</dd>
+              <dt>Original completion</dt><dd>${prov(c.original_completion, 'original_completion')}</dd>
+              <dt>Revised completion</dt><dd>${prov(c.revised_completion, 'revised_completion')}</dd>
+              <dt>First observed</dt><dd>${periodLabel(p.first_seen_period)}</dd>
+              <dt>Source</dt><dd>${esc(c.source.label || 'UNKNOWN')}${c.source.page
+                ? ', page ' + c.source.page : ''}</dd>
+            </dl>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>Financial and physical position</h3>
+              <span class="meta">Click any figure to trace it</span></div>
+            <dl class="kv">
+              <dt>Approved cost</dt><dd>${prov(c.original_cost_cr, 'original_cost', (v) => crore(v, 2))}</dd>
+              <dt>Revised cost</dt><dd>${prov(c.revised_cost_cr, 'revised_cost', (v) => crore(v, 2))}</dd>
+              <dt>Cumulative expenditure</dt><dd>${prov(c.expenditure_cr, 'expenditure', (v) => crore(v, 2))}</dd>
+              <dt>Cost escalation</dt><dd>${prov(c.cost_escalation_pct, 'cost_escalation_pct', (v) => pct(v, 2))}</dd>
+              <dt>Physical progress</dt><dd>${prov(c.physical_progress, 'physical_progress', (v) => pct(v))}</dd>
+              <dt>Financial progress</dt><dd>${prov(c.financial_progress, 'financial_progress', (v) => pct(v))}</dd>
+              <dt>Progress divergence</dt><dd>${prov(c.progress_divergence, 'progress_divergence',
+                (v) => v === null ? 'UNKNOWN' : num(v, 2) + ' pp')}</dd>
+              <dt>Elapsed timeline</dt><dd>${pct(c.elapsed_time_pct)}</dd>
+              <dt>Data completeness</dt><dd>${pct(c.completeness)}</dd>
+              <dt>Quality status</dt><dd>${c.data_quality_status === 'OK'
+                ? '<span class="badge badge-LOW">OK</span>'
+                : '<span class="badge badge-MODERATE">DATA QUALITY REVIEW</span>'}</dd>
+            </dl>
+          </div>
+        </div>
+        <div class="card" style="margin-top:18px">
+          <div class="card-head"><h3>Risk trajectory</h3>
+            <span class="meta">${t.trend.series.length} reporting periods</span></div>
+          ${sparkline(t.trend.series.map((s) => s.risk_score))}
+        </div>
+      </div>
+
+      <div data-panel="drivers" style="display:none">
+        ${decisionSupport(t.decision_support, c, t.trend)}
+        <div class="card">
+          <div class="card-head"><h3>What is driving this risk score</h3>
+            <span class="meta">Engine ${esc(c.risk_drivers.length ? 'v2.0-deterministic' : '—')}</span></div>
+          ${c.risk_drivers.length
+            ? c.risk_drivers.map(driverCard).join('')
+            : '<div class="empty">No risk drivers are currently active for this project.</div>'}
+          <div class="notice">Each driver contributes a bounded number of points. The composite
+            score is renormalised over only the indicators that could be computed from the
+            source, so missing fields neither inflate nor deflate the result.</div>
+        </div>
+      </div>
+
+      <div data-panel="replay" style="display:none">
+        <div class="card">
+          <div class="card-head"><h3>Risk escalation replay</h3>
+            <span class="meta">Step through how this project reached its current position</span></div>
+          ${replay.transitions.length ? `<div class="replay">
+            ${replay.frames.map((f, i) => {
+              const tr = i > 0 ? replay.transitions[i - 1] : null;
+              return `<div class="replay-step">
+                <div>
+                  <div class="replay-period">${periodLabel(f.period)}</div>
+                  <div class="replay-score">${num(f.risk_score, 0)}</div>
+                  ${badge(f.risk_level)}
+                </div>
+                <div>
+                  ${tr ? `<div style="font-size:13px;font-weight:600;color:${
+                    tr.to_score > tr.from_score ? 'var(--high)' : 'var(--low)'}">
+                    ${tr.to_score > tr.from_score ? '▲' : '▼'}
+                    ${num(Math.abs(tr.to_score - tr.from_score), 1)} points vs
+                    ${periodLabel(tr.from_period)}</div>` : ''}
+                  ${tr && tr.changes.length ? `<ul class="replay-changes">
+                    ${tr.changes.map((ch) => `<li>${esc(ch.text)}</li>`).join('')}
+                    ${tr.new_drivers.length ? `<li><strong>New driver(s):</strong>
+                      ${tr.new_drivers.map(esc).join(', ')}</li>` : ''}
+                  </ul>` : (i === 0
+                    ? '<div style="font-size:13px;color:var(--muted)">Baseline observation.</div>'
+                    : '<div style="font-size:13px;color:var(--muted)">No material change.</div>')}
+                  <div style="font-size:11.5px;color:var(--faint);margin-top:6px" class="mono">
+                    ${esc(f.source.label || '')}${f.source.page ? ' · p.' + f.source.page : ''}</div>
+                </div>
+              </div>`;
+            }).join('')}</div>`
+            : `<div class="empty">${esc(replay.note || 'Insufficient history to replay.')}</div>`}
+        </div>
+      </div>
+
+      <div data-panel="history" style="display:none">
+        <div class="table-wrap"><table class="data responsive">
+          <thead><tr><th>Period</th><th class="num">Risk</th><th>Level</th>
+            <th class="num">Physical</th><th class="num">Financial</th>
+            <th class="num">Expenditure</th><th class="num">Revised cost</th>
+            <th class="num">Delay</th><th>Source</th></tr></thead>
+          <tbody>${t.snapshots.map((s) => `<tr>
+            <td data-label="Period">${periodLabel(s.period)}</td>
+            <td data-label="Risk" class="num">${num(s.risk_score, 1)}</td>
+            <td data-label="Level">${badge(s.risk_level)}</td>
+            <td data-label="Physical" class="num">${pct(s.physical_progress)}</td>
+            <td data-label="Financial" class="num">${pct(s.financial_progress)}</td>
+            <td data-label="Expenditure" class="num">${crore(s.expenditure_cr, 2)}</td>
+            <td data-label="Revised cost" class="num">${crore(s.revised_cost_cr, 2)}</td>
+            <td data-label="Delay" class="num">${s.schedule_delay_months === null
+              ? UNKNOWN_HTML : s.schedule_delay_months}</td>
+            <td data-label="Source" class="mono" style="font-size:11.5px">
+              ${esc(s.source.label || '—')}${s.source.page ? ' p.' + s.source.page : ''}</td>
+          </tr>`).join('')}</tbody></table></div>
+        <div class="notice">Snapshots are immutable. A correction never overwrites an
+          observation — it creates a superseding record, so the original reading survives.</div>
+      </div>
+
+      <div data-panel="alerts" style="display:none">
+        ${t.alerts.length ? t.alerts.map((a) => `
+          <div class="card" style="margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:start">
+              <div>${badge(a.severity)} <span class="badge badge-${a.status === 'OPEN'
+                ? 'MODERATE' : 'LOW'}">${a.status}</span></div>
+              <span class="mono" style="font-size:11.5px;color:var(--faint)">${a.code} ·
+                ${periodLabel(a.report_period)}</span>
+            </div>
+            <h3 style="font-size:14.5px;color:var(--navy);margin:10px 0 6px">${esc(a.title)}</h3>
+            <p style="font-size:13.4px;margin:0 0 10px">${esc(a.description || '')}</p>
+            <div style="font-size:11.8px;color:var(--faint)" class="mono">
+              Trigger: ${esc(a.trigger || '')}</div>
+          </div>`).join('') : '<div class="empty">No alerts raised for this project.</div>'}
+      </div>
+
+      <div data-panel="interventions" style="display:none">
+        <div id="intPanel"></div>
+      </div>
+
+      <div data-panel="quality" style="display:none">
+        <div class="card">
+          <div class="card-head"><h3>Open data quality issues</h3></div>
+          ${t.data_quality.length ? `<table class="data responsive">
+            <thead><tr><th>Type</th><th>Field</th><th>Severity</th><th>Description</th>
+              <th>Period</th></tr></thead>
+            <tbody>${t.data_quality.map((d) => `<tr>
+              <td data-label="Type" class="mono">${esc(d.issue_type)}</td>
+              <td data-label="Field">${esc(d.field || '—')}</td>
+              <td data-label="Severity">${badge(d.severity)}</td>
+              <td data-label="Description">${esc(d.description || '')}</td>
+              <td data-label="Period">${periodLabel(d.report_period)}</td>
+            </tr>`).join('')}</tbody></table>`
+            : '<div class="empty">No open data quality issues for this project.</div>'}
+        </div>
+      </div>
+
+      <div data-panel="ask" style="display:none">
+        <div class="card">
+          <div class="card-head"><h3>Ask about this project</h3>
+            <span class="meta">Answers are restricted to this project's verified record</span></div>
+          <div class="chat" style="height:420px">
+            <div class="chat-log" id="pChat">
+              <div class="msg bot"><div class="who">PAIMANA AI</div>
+                <div class="bubble">Ask me why this project's risk changed, what is driving it,
+or what its current position is. I answer only from this project's stored snapshots.</div></div>
+            </div>
+            <div class="chat-input">
+              <label for="pQ" class="sr-only">Your question</label>
+              <input id="pQ" placeholder="Why is this project high risk?"/>
+              <button class="btn btn-primary btn-sm" id="pSend">Ask</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+
+    renderInterventions(t.interventions);
+    showTab('overview');
+
+    /* project-scoped assistant */
+    const send = async () => {
+      const input = document.getElementById('pQ');
+      const q = input.value.trim();
+      if (!q) return;
+      const log = document.getElementById('pChat');
+      log.insertAdjacentHTML('beforeend',
+        `<div class="msg user"><div class="who">You</div><div class="bubble">${esc(q)}</div></div>`);
+      input.value = '';
+      log.insertAdjacentHTML('beforeend',
+        `<div class="msg bot" id="pending"><div class="who">PAIMANA AI</div>
+         <div class="bubble"><span class="spinner"></span> Querying verified records…</div></div>`);
+      log.scrollTop = log.scrollHeight;
+      try {
+        const r = await API.post('/api/assistant/ask', { question: q, project_code: code });
+        document.getElementById('pending').outerHTML =
+          `<div class="msg bot"><div class="who">PAIMANA AI · ${r.answer_source}</div>
+           <div class="bubble">${esc(r.answer)}</div></div>`;
+      } catch (err) {
+        document.getElementById('pending').outerHTML =
+          `<div class="msg bot"><div class="who">PAIMANA AI</div>
+           <div class="bubble">${esc(err.message)}</div></div>`;
+      }
+      log.scrollTop = log.scrollHeight;
+    };
+    document.getElementById('pSend').onclick = send;
+    document.getElementById('pQ').addEventListener('keydown',
+      (e) => { if (e.key === 'Enter') send(); });
+
+  } catch (err) {
+    document.getElementById('twin').className = '';
+    document.getElementById('twin').innerHTML =
+      `<div class="notice notice-warn">${esc(err.message)}</div>`;
+  }
+})();
+
+function renderInterventions(items) {
+  const user = API.user();
+  const panel = document.getElementById('intPanel');
+  const list = items.length ? items.map((i) => `
+    <div class="card" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;gap:12px">
+        <div><span class="mono" style="font-weight:600">${esc(i.reference)}</span>
+          ${badge(i.severity)} <span class="badge badge-INFO">${i.status}</span></div>
+        <span style="font-size:11.8px;color:var(--faint)">Due ${esc(i.due_date || '—')}</span>
+      </div>
+      <p style="font-size:13.4px;margin:10px 0 6px">${esc(i.issue)}</p>
+      <div style="font-size:12.4px;color:var(--muted)">Owner: ${esc(i.owner || 'Unassigned')}
+        · Authority: ${esc(i.assigned_authority || '—')}</div>
+      ${i.action ? `<div style="font-size:12.8px;margin-top:8px"><strong>Action:</strong>
+        ${esc(i.action)}</div>` : ''}
+      ${(i.history || []).length ? `<details style="margin-top:10px">
+        <summary style="font-size:12.4px;cursor:pointer;color:var(--gov-blue)">
+          Status history (${i.history.length})</summary>
+        <ul style="font-size:12.2px;margin:8px 0 0;padding-left:18px">
+          ${i.history.map((h) => `<li>${esc(h.at?.slice(0, 16).replace('T', ' '))} —
+            ${esc(h.from || 'created')} → <strong>${esc(h.to)}</strong> by ${esc(h.by)}
+            ${h.note ? '· ' + esc(h.note) : ''}</li>`).join('')}
+        </ul></details>` : ''}
+    </div>`).join('') : '<div class="empty">No interventions recorded for this project.</div>';
+
+  panel.innerHTML = list + (user ? `
+    <div class="card">
+      <div class="card-head"><h3>Raise an intervention</h3></div>
+      <div class="field"><label for="iIssue">Issue</label>
+        <textarea id="iIssue" rows="3" placeholder="Describe the issue requiring action"></textarea></div>
+      <div class="grid grid-3" style="gap:12px">
+        <div class="field"><label for="iSev">Severity</label>
+          <select id="iSev"><option>LOW</option><option selected>MEDIUM</option>
+            <option>HIGH</option><option>CRITICAL</option></select></div>
+        <div class="field"><label for="iOwner">Owner</label><input id="iOwner"/></div>
+        <div class="field"><label for="iDue">Due date</label><input id="iDue" type="date"/></div>
+      </div>
+      <div class="field"><label for="iAction">Proposed action</label>
+        <input id="iAction" placeholder="e.g. Convene review with executing agency"/></div>
+      <div id="iErr"></div>
+      <button class="btn btn-primary" id="iSubmit">Create intervention</button>
+    </div>`
+    : `<div class="notice">Sign in as an analyst to raise or update interventions.</div>`);
+
+  const btn = document.getElementById('iSubmit');
+  if (btn) btn.onclick = async () => {
+    btn.disabled = true;
+    try {
+      await API.post('/api/interventions', {
+        project_code: code,
+        issue: document.getElementById('iIssue').value,
+        severity: document.getElementById('iSev').value,
+        owner: document.getElementById('iOwner').value || null,
+        due_date: document.getElementById('iDue').value || null,
+        action: document.getElementById('iAction').value || null,
+      });
+      location.reload();
+    } catch (err) {
+      document.getElementById('iErr').innerHTML =
+        `<div class="notice notice-warn">${esc(err.message)}</div>`;
+      btn.disabled = false;
+    }
+  };
+}
+</script>
+</body>
+</html>

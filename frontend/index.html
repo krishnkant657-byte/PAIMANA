@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>PAIMANA — Infrastructure Project Intelligence Platform</title>
+<meta name="description" content="AI-assisted project monitoring, risk intelligence and
+  evidence-based intervention support for public infrastructure projects."/>
+<link rel="stylesheet" href="/static/css/paimana.css?v=2"/>
+</head>
+<body>
+<main id="main">
+
+  <section class="hero">
+    <div class="wrap">
+      <div>
+        <span class="hero-eyebrow">Infrastructure Project Intelligence Platform</span>
+        <h1>India's infrastructure, seen before the risk becomes a crisis.</h1>
+        <p>AI-assisted project monitoring, predictive risk intelligence and evidence-based
+          intervention support — built entirely on published Flash Report data, with every
+          figure traceable to its source page.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="/monitor">Open National Monitor</a>
+          <a class="btn btn-outline" href="/projects">Browse Projects</a>
+        </div>
+      </div>
+      <div class="hero-panel" id="heroPanel">
+        <h3>National Snapshot</h3>
+        <div class="period" id="heroPeriod">Loading…</div>
+        <div class="hero-stats" id="heroStats">
+          <div class="hero-stat"><div class="v">—</div><div class="l">Projects</div></div>
+          <div class="hero-stat"><div class="v">—</div><div class="l">At risk</div></div>
+          <div class="hero-stat"><div class="v">—</div><div class="l">Delayed</div></div>
+          <div class="hero-stat"><div class="v">—</div><div class="l">Cost exposure</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="rule"></div>
+        <h2>National Monitoring Snapshot</h2>
+        <p id="snapshotCaption">Computed from ingested Flash Report snapshots.</p>
+      </div>
+      <div class="grid grid-4" id="statCards"><div class="loading">Loading…</div></div>
+
+      <div class="grid grid-2" style="margin-top:22px">
+        <div class="card">
+          <div class="card-head"><h3>Risk trend across reporting periods</h3>
+            <span class="meta" id="trendMeta"></span></div>
+          <div id="trendChart" class="loading">Loading…</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Risk distribution</h3><span class="meta">Current period</span></div>
+          <div id="riskDist" class="loading">Loading…</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="rule"></div>
+        <h2>India Project Map</h2>
+        <p>Projects aggregated by administrative state. The source records a state, not
+          coordinates, so no point locations are implied.</p>
+      </div>
+      <div class="map-grid" id="mapGrid"><div class="loading">Loading…</div></div>
+      <div style="text-align:center;margin-top:22px">
+        <a class="btn btn-outline" href="/monitor">View full state and sector breakdown</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="rule"></div>
+        <h2>Early Warnings</h2>
+        <p>Deterministic triggers raised against the latest reporting period, each backed by
+          the evidence values that fired it.</p>
+      </div>
+      <div class="grid grid-3" id="warningCards"><div class="loading">Loading…</div></div>
+      <div style="text-align:center;margin-top:22px">
+        <a class="btn btn-outline" href="/warnings">All early warnings</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="rule"></div>
+        <h2>Featured Projects</h2>
+        <p>Highest composite risk in the current reporting period.</p>
+      </div>
+      <div class="grid grid-3" id="featured"><div class="loading">Loading…</div></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <div class="grid grid-2" style="gap:32px">
+        <div>
+          <h2 style="font-size:19px;color:var(--navy);margin:0 0 6px;font-weight:800">
+            Ask PAIMANA AI</h2>
+          <div style="width:44px;height:3px;background:var(--orange);margin-bottom:14px"></div>
+          <p style="font-size:14.5px">Ask questions in plain language. Every answer is resolved
+            to a structured database query first — the language model rephrases the verified
+            result and cannot introduce a figure of its own.</p>
+          <div class="chips">
+            <button class="chip" onclick="goAsk(this.textContent)">Which projects are high risk?</button>
+            <button class="chip" onclick="goAsk(this.textContent)">Summarise the national risk situation.</button>
+            <button class="chip" onclick="goAsk(this.textContent)">Which projects deteriorated this month?</button>
+            <button class="chip" onclick="goAsk(this.textContent)">Compare Maharashtra and Gujarat.</button>
+          </div>
+          <div style="margin-top:20px"><a class="btn btn-primary" href="/assistant">Open the assistant</a></div>
+        </div>
+        <div>
+          <h2 style="font-size:19px;color:var(--navy);margin:0 0 6px;font-weight:800">
+            What's New</h2>
+          <div style="width:44px;height:3px;background:var(--orange);margin-bottom:14px"></div>
+          <div class="card" style="padding:0"><div id="whatsNew" class="loading">Loading…</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="rule"></div>
+        <h2>Useful Links &amp; Resources</h2>
+      </div>
+      <div class="card">
+        <ul class="link-list">
+          <li><a href="/monitor">National Monitoring Dashboard</a></li>
+          <li><a href="/projects">Project Explorer &amp; Register</a></li>
+          <li><a href="/warnings">Early Warning Register</a></li>
+          <li><a href="/interventions">Intervention Centre</a></li>
+          <li><a href="/analytics">Analytics Studio</a></li>
+          <li><a href="/simulator">Scenario Lab &amp; Pre-Approval Simulator</a></li>
+          <li><a href="/data">Data Quality Centre</a></li>
+          <li><a href="/data#sources">Ingested Source Documents</a></li>
+          <li><a href="/reports">Monitoring &amp; Executive Reports</a></li>
+          <li><a href="/assistant">PAIMANA AI Assistant</a></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script src="/static/js/paimana.js?v=4.0"></script>
+<script>
+renderChrome('/');
+
+function goAsk(q) { location.href = '/assistant?q=' + encodeURIComponent(q); }
+
+(async function () {
+  try {
+    const [summary, trendRes, mapRes, alertsRes, projRes] = await Promise.all([
+      API.get('/api/monitor/summary'),
+      API.get('/api/monitor/trend'),
+      API.get('/api/monitor/map'),
+      API.get('/api/alerts?status=OPEN&limit=6'),
+      API.get('/api/projects?sort=risk_desc&page_size=6'),
+    ]);
+
+    if (!summary.total_projects) {
+      document.getElementById('statCards').innerHTML =
+        '<div class="notice notice-warn">No data has been ingested yet. Run '
+        + '<span class="mono">python scripts/ingest_reports.py</span> to load the Flash Reports.</div>';
+      return;
+    }
+
+    /* hero */
+    document.getElementById('heroPeriod').textContent =
+      'Reporting period: ' + periodLabel(summary.period);
+    document.getElementById('heroStats').innerHTML = `
+      <div class="hero-stat"><div class="v">${int(summary.total_projects)}</div>
+        <div class="l">Projects</div></div>
+      <div class="hero-stat"><div class="v">${int(summary.at_risk)}</div>
+        <div class="l">At risk</div></div>
+      <div class="hero-stat"><div class="v">${int(summary.delayed_projects)}</div>
+        <div class="l">Delayed</div></div>
+      <div class="hero-stat"><div class="v">${crore(summary.cost_exposure_cr)}</div>
+        <div class="l">Cost exposure</div></div>`;
+
+    document.getElementById('snapshotCaption').textContent =
+      `All figures computed from ${periodLabel(summary.period)} Flash Report snapshots. `
+      + `No demonstration data is mixed in.`;
+
+    /* stat cards */
+    document.getElementById('statCards').innerHTML = `
+      <div class="stat-card"><div class="label">Projects monitored</div>
+        <div class="value">${int(summary.total_projects)}</div>
+        <div class="sub">${periodLabel(summary.period)}</div></div>
+      <div class="stat-card accent-red"><div class="label">High or severe risk</div>
+        <div class="value">${int(summary.at_risk)}</div>
+        <div class="sub">${int(summary.risk_distribution.SEVERE)} severe</div></div>
+      <div class="stat-card accent-amber"><div class="label">Past original completion</div>
+        <div class="value">${int(summary.delayed_projects)}</div>
+        <div class="sub">${summary.delayed_pct}% of portfolio</div></div>
+      <div class="stat-card accent-orange"><div class="label">Cost above approved</div>
+        <div class="value" style="font-size:24px">${crore(summary.cost_exposure_cr)}</div>
+        <div class="sub">${int(summary.cost_escalated_projects)} projects escalated</div></div>`;
+
+    /* trend */
+    const series = trendRes.series;
+    document.getElementById('trendMeta').textContent =
+      series.length + ' reporting periods';
+    document.getElementById('trendChart').className = '';
+    document.getElementById('trendChart').innerHTML =
+      sparkline(series.map((s) => s.avg_risk_score))
+      + `<table class="data" style="margin-top:12px"><thead><tr>
+          <th>Period</th><th class="num">Projects</th><th class="num">Avg risk</th>
+          <th class="num">At risk</th></tr></thead><tbody>`
+      + series.map((s) => `<tr><td>${periodLabel(s.period)}</td>
+          <td class="num">${int(s.projects)}</td>
+          <td class="num">${num(s.avg_risk_score, 1)}</td>
+          <td class="num">${int(s.at_risk)}</td></tr>`).join('')
+      + '</tbody></table>';
+
+    /* risk distribution */
+    const d = summary.risk_distribution;
+    const distItems = ['SEVERE', 'HIGH', 'MODERATE', 'LOW']
+      .map((k) => ({ label: k, value: d[k] }));
+    document.getElementById('riskDist').className = '';
+    document.getElementById('riskDist').innerHTML =
+      distItems.map((i) => `
+        <div style="margin-bottom:11px">
+          <div style="display:flex;justify-content:space-between;font-size:12.6px;margin-bottom:4px">
+            <span>${badge(i.label)}</span>
+            <span class="mono">${int(i.value)} projects</span></div>
+          <div class="bar"><span style="width:${(i.value / summary.total_projects) * 100}%;
+            background:${riskColour(i.label)}"></span></div>
+        </div>`).join('')
+      + `<div class="notice" style="margin-top:14px;font-size:12.4px">Risk is computed by a
+         deterministic engine from cost, schedule and progress indicators. No trained
+         classifier is used — see the Data Quality Centre for the rationale.</div>`;
+
+    /* map */
+    document.getElementById('mapGrid').innerHTML = mapRes.states.slice(0, 16).map((s) => {
+      const risk = s.avg_risk_score;
+      const colour = risk >= 50 ? '#B3261E' : risk >= 25 ? '#97650A' : '#1E7A4B';
+      return `<a class="map-state" style="border-left-color:${colour};display:block"
+        href="/projects?state=${encodeURIComponent(s.key)}">
+        <div class="n">${esc(s.key)}</div>
+        <div class="c">${int(s.projects)} projects · ${int(s.at_risk)} at risk</div>
+        <div class="r" style="color:${colour}">Avg risk ${num(s.avg_risk_score, 1)}</div></a>`;
+    }).join('');
+
+    /* warnings */
+    document.getElementById('warningCards').innerHTML =
+      alertsRes.items.slice(0, 6).map((a) => `
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:start;gap:10px">
+            ${badge(a.severity)}
+            <span class="meta mono" style="font-size:11px;color:var(--faint)">${a.code}</span>
+          </div>
+          <h3 style="font-size:14px;color:var(--navy);margin:10px 0 6px">${esc(a.title)}</h3>
+          <p style="font-size:13px;margin:0 0 10px">${esc(a.description || '')}</p>
+          <a href="/project?code=${a.project.project_code}"
+             style="font-size:12.6px;font-weight:600">${esc(a.project.name.slice(0, 58))} →</a>
+        </div>`).join('') || '<div class="empty">No open warnings.</div>';
+
+    /* featured */
+    document.getElementById('featured').innerHTML = projRes.items.map((p) => `
+      <a class="card" style="display:block" href="/project?code=${p.project_code}">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:start">
+          ${badge(p.risk_level)}
+          <span class="mono" style="font-size:11.5px;color:var(--faint)">${p.project_code}</span>
+        </div>
+        <h3 style="font-size:14px;color:var(--navy);margin:10px 0 6px;line-height:1.4">
+          ${esc(p.name.slice(0, 72))}</h3>
+        <div style="font-size:12.4px;color:var(--muted);margin-bottom:10px">
+          ${esc(p.state)} · ${esc(p.sector)}</div>
+        <div style="display:flex;justify-content:space-between;font-size:12.4px;margin-bottom:4px">
+          <span>Physical progress</span><span class="mono">${pct(p.physical_progress)}</span></div>
+        ${bar(p.physical_progress)}
+        <div style="display:flex;justify-content:space-between;margin-top:12px;font-size:12.4px">
+          <span>Risk <strong class="mono">${num(p.risk_score, 1)}</strong></span>
+          ${trendLabel(p.trend)}
+        </div>
+      </a>`).join('');
+
+    /* what's new */
+    document.getElementById('whatsNew').className = '';
+    const sources = await API.get('/api/data-quality/sources');
+    document.getElementById('whatsNew').innerHTML =
+      '<ul style="list-style:none;margin:0;padding:0">'
+      + sources.sources.slice().reverse().map((s) => `
+        <li style="padding:13px 18px;border-bottom:1px solid var(--border-soft)">
+          <div style="font-size:13.2px;font-weight:600;color:var(--navy)">
+            ${esc(s.report_label || s.report_period)} Flash Report ingested</div>
+          <div style="font-size:12.2px;color:var(--muted);margin-top:2px">
+            ${int(s.snapshots)} project snapshots · ${int(s.page_count)} pages ·
+            <span class="mono">${s.sha256.slice(0, 12)}</span></div>
+        </li>`).join('')
+      + `<li style="padding:13px 18px">
+          <div style="font-size:13.2px;font-weight:600;color:var(--navy)">
+            Risk engine v2.0 (deterministic) active</div>
+          <div style="font-size:12.2px;color:var(--muted);margin-top:2px">
+            Every score attributable to named drivers backed by source values.</div>
+        </li></ul>`;
+  } catch (err) {
+    document.getElementById('statCards').innerHTML =
+      `<div class="notice notice-warn">Could not load platform data: ${esc(err.message)}</div>`;
+  }
+})();
+</script>
+</body>
+</html>

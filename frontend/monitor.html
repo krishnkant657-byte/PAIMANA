@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>National Monitor — PAIMANA</title>
+<link rel="stylesheet" href="/static/css/paimana.css?v=2"/>
+</head>
+<body>
+<main id="main">
+  <div class="page-head">
+    <div class="wrap">
+      <div class="breadcrumb"><a href="/">Home</a> › National Monitor</div>
+      <h1>National Monitor</h1>
+      <p id="mSub">Portfolio position for the latest reporting period.</p>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:26px">
+    <div class="wrap">
+      <div class="grid grid-4" id="kpis"><div class="loading">Loading…</div></div>
+
+      <div class="grid grid-2" style="margin-top:22px">
+        <div class="card">
+          <div class="card-head"><h3>Portfolio trend</h3><span class="meta" id="trendMeta"></span></div>
+          <div id="trend"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Risk band distribution</h3></div>
+          <div id="dist"></div>
+        </div>
+      </div>
+
+      <div class="tabs" style="margin-top:28px">
+        <button data-tab="state" class="active" onclick="showTab('state')">By state</button>
+        <button data-tab="sector" onclick="showTab('sector')">By sector</button>
+        <button data-tab="ministry" onclick="showTab('ministry')">By ministry</button>
+        <button data-tab="map" onclick="showTab('map')">India map</button>
+      </div>
+      <div data-panel="state"><div class="table-wrap" id="tState" class="loading">Loading…</div></div>
+      <div data-panel="sector" style="display:none"><div class="table-wrap" id="tSector"></div></div>
+      <div data-panel="ministry" style="display:none"><div class="table-wrap" id="tMinistry"></div></div>
+      <div data-panel="map" style="display:none">
+        <div class="map-grid" id="mapGrid"></div>
+        <div class="notice" id="mapNote"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="/static/js/paimana.js?v=2"></script>
+<script>
+renderChrome('/monitor');
+
+function showTab(name) {
+  document.querySelectorAll('.tabs button').forEach((b) =>
+    b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('[data-panel]').forEach((p) =>
+    p.style.display = p.dataset.panel === name ? '' : 'none');
+}
+
+function groupTable(groups, dimension) {
+  if (!groups.length) return '<div class="empty">No data.</div>';
+  return `<table class="data responsive">
+    <thead><tr><th>${dimension}</th><th class="num">Projects</th><th class="num">Avg risk</th>
+      <th class="num">Approved cost</th><th class="num">Revised cost</th>
+      <th class="num">Cost exposure</th><th class="num">Expenditure</th>
+      <th class="num">Avg progress</th><th class="num">Avg delay</th></tr></thead>
+    <tbody>${groups.map((g) => `<tr>
+      <td data-label="${dimension}">
+        <a href="/projects?${dimension.toLowerCase()}=${encodeURIComponent(g.key)}">${esc(g.key)}</a>
+        ${g.reliable ? '' : ' <span class="badge badge-INFO" title="Fewer than 8 projects">SMALL COHORT</span>'}</td>
+      <td data-label="Projects" class="num">${int(g.projects)}</td>
+      <td data-label="Avg risk" class="num">${num(g.avg_risk_score, 1)}</td>
+      <td data-label="Approved cost" class="num">${crore(g.original_cost_cr)}</td>
+      <td data-label="Revised cost" class="num">${crore(g.revised_cost_cr)}</td>
+      <td data-label="Cost exposure" class="num"
+        style="color:${g.cost_exposure_cr > 0 ? 'var(--high)' : 'inherit'}">
+        ${crore(g.cost_exposure_cr)}</td>
+      <td data-label="Expenditure" class="num">${crore(g.expenditure_cr)}</td>
+      <td data-label="Avg progress" class="num">${pct(g.avg_physical_progress)}</td>
+      <td data-label="Avg delay" class="num">${num(g.avg_delay_months, 1)}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+(async function () {
+  try {
+    const [s, tr, st, se, mi, mp] = await Promise.all([
+      API.get('/api/monitor/summary'),
+      API.get('/api/monitor/trend'),
+      API.get('/api/monitor/by-state'),
+      API.get('/api/monitor/by-sector'),
+      API.get('/api/monitor/by-ministry'),
+      API.get('/api/monitor/map'),
+    ]);
+
+    document.getElementById('mSub').textContent =
+      `Reporting period ${periodLabel(s.period)} · ${int(s.total_projects)} projects monitored`;
+
+    document.getElementById('kpis').innerHTML = `
+      <div class="stat-card"><div class="label">Projects</div>
+        <div class="value">${int(s.total_projects)}</div>
+        <div class="sub">Mean progress ${pct(s.mean_physical_progress)}</div></div>
+      <div class="stat-card accent-red"><div class="label">High / severe risk</div>
+        <div class="value">${int(s.at_risk)}</div>
+        <div class="sub">${int(s.risk_distribution.SEVERE)} severe ·
+          ${int(s.risk_distribution.HIGH)} high</div></div>
+      <div class="stat-card accent-amber"><div class="label">Delayed</div>
+        <div class="value">${int(s.delayed_projects)}</div>
+        <div class="sub">${s.delayed_pct}% past original completion</div></div>
+      <div class="stat-card accent-orange"><div class="label">Cost exposure</div>
+        <div class="value" style="font-size:23px">${crore(s.cost_exposure_cr)}</div>
+        <div class="sub">Approved ${crore(s.original_cost_cr)}</div></div>`;
+
+    document.getElementById('trendMeta').textContent = tr.series.length + ' periods';
+    document.getElementById('trend').innerHTML =
+      sparkline(tr.series.map((x) => x.avg_risk_score))
+      + `<table class="data" style="margin-top:12px"><thead><tr><th>Period</th>
+          <th class="num">Projects</th><th class="num">Avg risk</th><th class="num">At risk</th>
+          <th class="num">Cost exposure</th><th class="num">Expenditure</th></tr></thead>
+        <tbody>${tr.series.map((x) => `<tr><td>${periodLabel(x.period)}</td>
+          <td class="num">${int(x.projects)}</td><td class="num">${num(x.avg_risk_score, 1)}</td>
+          <td class="num">${int(x.at_risk)}</td><td class="num">${crore(x.cost_exposure_cr)}</td>
+          <td class="num">${crore(x.expenditure_cr)}</td></tr>`).join('')}</tbody></table>`;
+
+    document.getElementById('dist').innerHTML =
+      ['SEVERE', 'HIGH', 'MODERATE', 'LOW'].map((k) => `
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;font-size:12.6px;margin-bottom:4px">
+            <span>${badge(k)}</span>
+            <span class="mono">${int(s.risk_distribution[k])}
+              (${pct(100 * s.risk_distribution[k] / s.total_projects)})</span></div>
+          <div class="bar"><span style="width:${100 * s.risk_distribution[k] / s.total_projects}%;
+            background:${riskColour(k)}"></span></div>
+        </div>`).join('')
+      + `<div class="notice" style="font-size:12.4px">Bands: LOW &lt;25, MODERATE 25–49,
+         HIGH 50–69, SEVERE ≥70. Scores are renormalised over the indicators computable for
+         each project.</div>`;
+
+    document.getElementById('tState').className = '';
+    document.getElementById('tState').innerHTML = groupTable(st.groups, 'State');
+    document.getElementById('tSector').innerHTML = groupTable(se.groups, 'Sector');
+    document.getElementById('tMinistry').innerHTML = groupTable(mi.groups, 'Ministry');
+
+    document.getElementById('mapGrid').innerHTML = mp.states.map((x) => {
+      const c = riskColour(x.avg_risk_score >= 50 ? 'HIGH'
+        : x.avg_risk_score >= 25 ? 'MODERATE' : 'LOW');
+      return `<a class="map-state" style="border-left-color:${c};display:block"
+        href="/projects?state=${encodeURIComponent(x.key)}">
+        <div class="n">${esc(x.key)}</div>
+        <div class="c">${int(x.projects)} projects · ${int(x.at_risk)} at risk</div>
+        <div class="r" style="color:${c}">Avg risk ${num(x.avg_risk_score, 1)} ·
+          ${crore(x.cost_exposure_cr)}</div></a>`;
+    }).join('');
+    document.getElementById('mapNote').textContent = mp.geographic_note;
+  } catch (err) {
+    document.getElementById('kpis').innerHTML =
+      `<div class="notice notice-warn">${esc(err.message)}</div>`;
+  }
+})();
+</script>
+</body>
+</html>

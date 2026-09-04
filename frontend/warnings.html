@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Early Warnings — PAIMANA</title>
+<link rel="stylesheet" href="/static/css/paimana.css?v=2"/>
+</head>
+<body>
+<main id="main">
+  <div class="page-head">
+    <div class="wrap">
+      <div class="breadcrumb"><a href="/">Home</a> › Early Warnings</div>
+      <h1>Early Warning Register</h1>
+      <p>Deterministic triggers over consecutive snapshots. Each warning shows the rule that
+         fired it and the evidence values behind it.</p>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:26px">
+    <div class="wrap">
+      <div class="grid grid-3" id="codeCards" style="margin-bottom:22px"></div>
+
+      <div class="card" style="margin-bottom:18px">
+        <div class="filters">
+          <div class="field"><label for="fcode">Warning type</label>
+            <select id="fcode"><option value="">All types</option></select></div>
+          <div class="field"><label for="fsev">Severity</label>
+            <select id="fsev"><option value="">All severities</option>
+              <option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option>
+              <option>LOW</option></select></div>
+          <div class="field"><label for="fstat">Status</label>
+            <select id="fstat"><option value="OPEN" selected>Open</option>
+              <option value="ACKNOWLEDGED">Acknowledged</option>
+              <option value="IN_REVIEW">In review</option>
+              <option value="CLOSED">Closed</option>
+              <option value="">All</option></select></div>
+        </div>
+      </div>
+
+      <div id="list" class="loading"><span class="spinner"></span> Loading warnings…</div>
+    </div>
+  </section>
+</main>
+
+<script src="/static/js/paimana.js?v=4.0"></script>
+<script>
+renderChrome('/warnings');
+
+const RULE_TEXT = {
+  PROGRESS_DIVERGENCE: 'Financial progress exceeds physical progress by 15 percentage points or more.',
+  COST_ACCELERATION: 'Revised cost rose 5% or more against the previous reporting period.',
+  SCHEDULE_DETERIORATION: 'Forecast completion slipped 6 months or more in a single cycle.',
+  RISK_DETERIORATION: 'Composite risk rose across 2 or more consecutive reporting periods.',
+  PROGRESS_STALL: 'Physical progress unchanged across 3 consecutive reports.',
+  SEVERE_RISK_EXPOSURE: 'Composite risk score reached 70 or above.',
+};
+
+function formatTriggerRule(trigger, code) {
+  if (RULE_TEXT[code]) {
+    return RULE_TEXT[code];
+  }
+  if (!trigger) return 'Standard system risk threshold rule applied.';
+  
+  return trigger
+    .replace(/risk_score\s*>=\s*70(\.0)?/g, 'Composite Risk Score reaches Severe threshold (70+ points)')
+    .replace(/financial_progress\s*-\s*physical_progress\s*>=\s*15(\.0)?/g, 'Financial expenditure exceeds physical ground progress by 15% or more')
+    .replace(/cost_escalation_pct\s*>=\s*5(\.0)?/g, 'Project budget escalates by 5% or more in a single cycle')
+    .replace(/schedule_delay_months\s*>=\s*6(\.0)?/g, 'Project targeted completion date slips by 6 months or more')
+    .replace(/consecutive_stalls\s*>=\s*3(\.0)?/g, 'Physical ground construction stalled across 3 consecutive reports')
+    .replace(/_/g, ' ')
+    .replace(/>=/g, 'is at least')
+    .replace(/<=/g, 'is at most')
+    .replace(/==/g, 'equals');
+}
+
+function formatEvidence(evidence) {
+  if (!evidence || typeof evidence !== 'object') return '<div class="empty">No evidence recorded.</div>';
+  
+  let html = '<div style="background:var(--surface-alt);padding:14px;border-radius:6px;margin-top:8px;font-size:13px;border:1px solid var(--border-soft)">';
+  
+  const items = [];
+  if (evidence.risk_score != null) {
+    items.push(`<div><strong>Risk Score:</strong> ${num(evidence.risk_score, 1)} pts (${badge(evidence.risk_level || 'UNKNOWN')})</div>`);
+  }
+  if (evidence.confidence != null) {
+    items.push(`<div><strong>Model Confidence:</strong> ${pct(evidence.confidence * 100, 1)}</div>`);
+  }
+  if (evidence.cost_escalation_pct != null) {
+    items.push(`<div><strong>Cost Escalation:</strong> ${pct(evidence.cost_escalation_pct, 1)}</div>`);
+  }
+  if (evidence.schedule_delay_months != null) {
+    items.push(`<div><strong>Schedule Delay:</strong> ${evidence.schedule_delay_months} months</div>`);
+  }
+  
+  if (items.length) {
+    html += `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:10px;margin-bottom:10px">${items.join('')}</div>`;
+  }
+  
+  if (Array.isArray(evidence.drivers) && evidence.drivers.length) {
+    html += `<div style="margin-top:8px"><strong>Active Risk Drivers:</strong><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">`
+      + evidence.drivers.map(d => `<span class="badge" style="background:#E2E8F0;color:#1E293B;font-size:11px;padding:3px 8px">${esc(String(d).replace(/_/g, ' '))}</span>`).join('')
+      + `</div></div>`;
+  }
+  
+  html += `</div>`;
+  return html;
+}
+
+async function load() {
+  const list = document.getElementById('list');
+  list.className = 'loading';
+  list.innerHTML = '<span class="spinner"></span> Loading warnings…';
+
+  const p = new URLSearchParams();
+  const code = document.getElementById('fcode').value;
+  const sev = document.getElementById('fsev').value;
+  const stat = document.getElementById('fstat').value;
+  if (code) p.set('code', code);
+  if (sev) p.set('severity', sev);
+  if (stat) p.set('status', stat);
+  p.set('limit', '60');
+
+  try {
+    const data = await API.get('/api/alerts?' + p.toString());
+
+    if (!document.getElementById('fcode').dataset.filled) {
+      const sel = document.getElementById('fcode');
+      Object.keys(data.open_by_code).sort().forEach((c) =>
+        sel.insertAdjacentHTML('beforeend', `<option value="${c}">${c}</option>`));
+      sel.dataset.filled = '1';
+
+      document.getElementById('codeCards').innerHTML =
+        Object.entries(data.open_by_code)
+          .sort((a, b) => b[1] - a[1])
+          .map(([c, n]) => `
+            <div class="card" style="cursor:pointer" onclick="filterBy('${c}')">
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <span class="mono" style="font-size:12px;font-weight:600;color:var(--navy)">${c}</span>
+                <span style="font-size:24px;font-weight:800;color:var(--orange)">${int(n)}</span>
+              </div>
+              <p style="font-size:12.6px;margin:8px 0 0;color:var(--muted)">
+                ${esc(RULE_TEXT[c] || '')}</p>
+            </div>`).join('');
+    }
+
+    if (!data.items.length) {
+      list.className = 'empty';
+      list.textContent = 'No warnings match these filters.';
+      return;
+    }
+
+    const user = API.user();
+    list.className = '';
+    list.innerHTML = `<div style="font-size:13px;color:var(--muted);margin-bottom:12px">
+        Showing ${data.items.length} of ${int(data.total)} warnings</div>`
+      + data.items.map((a) => `
+        <div class="card" style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;gap:12px;align-items:start;flex-wrap:wrap">
+            <div>${badge(a.severity)}
+              <span class="badge badge-${a.status === 'OPEN' ? 'MODERATE' : 'LOW'}">${a.status}</span>
+              <span class="mono" style="font-size:11.5px;color:var(--faint);margin-left:6px">
+                ${a.code} · ${periodLabel(a.report_period)}</span></div>
+            ${user ? `<div style="display:flex;gap:6px">
+              <button class="btn btn-outline btn-sm" onclick="setStatus(${a.id},'ACKNOWLEDGED')">
+                Acknowledge</button>
+              <button class="btn btn-outline btn-sm" onclick="setStatus(${a.id},'CLOSED')">
+                Close</button></div>` : ''}
+          </div>
+          <h3 style="font-size:14.5px;color:var(--navy);margin:10px 0 6px">${esc(a.title)}</h3>
+          <p style="font-size:13.4px;margin:0 0 10px">${esc(a.description || '')}</p>
+          <div style="font-size:12.6px;margin-bottom:8px">
+            <a href="/project?code=${a.project.project_code}" style="font-weight:600">
+              ${esc(a.project.name.slice(0, 80))}</a>
+            <span style="color:var(--muted)"> · ${esc(a.project.state)} ·
+              ${esc(a.project.sector)}</span></div>
+          <details>
+            <summary style="font-size:12.4px;cursor:pointer;color:var(--gov-blue);font-weight:600">
+              ▼ Trigger rule &amp; evidence breakdown</summary>
+            <div class="notice" style="margin-top:8px;font-size:13px;line-height:1.5">
+              <strong>Trigger Criterion:</strong> ${esc(formatTriggerRule(a.trigger, a.code))}</div>
+            ${formatEvidence(a.evidence)}
+          </details>
+        </div>`).join('');
+  } catch (err) {
+    list.className = '';
+    list.innerHTML = `<div class="notice notice-warn">${esc(err.message)}</div>`;
+  }
+}
+
+function filterBy(code) {
+  document.getElementById('fcode').value = code;
+  load();
+  window.scrollTo({ top: 300, behavior: 'smooth' });
+}
+
+async function setStatus(id, status) {
+  try { await API.patch('/api/alerts/' + id, { status }); load(); }
+  catch (err) { alert(err.message); }
+}
+
+['fcode', 'fsev', 'fstat'].forEach((id) =>
+  document.getElementById(id).addEventListener('change', load));
+load();
+</script>
+</body>
+</html>
