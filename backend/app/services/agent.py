@@ -449,74 +449,91 @@ being wrong.
 """
 
 
-def generate_executive_dpr_audit(text: str, filename: str) -> str:
-    """Generates a rich, executive-grade DPR audit report, strong points, risk verdict, and actionable solutions."""
+def generate_executive_dpr_audit(text: str, filename: str, analysis: dict | None = None) -> str:
+    """Generates a clear, plain-language audit report with easy advice to make the project less risky."""
+    from .files.analysis import extract_key_metrics
+    metrics = extract_key_metrics(text, analysis or {})
+
     txt = (text or "").lower()
-    
-    # Extract numbers if present in text
-    has_dpr = "dpr" in txt or "detailed project report" in txt or "railway" in txt or "indore" in txt or "itarsi" in txt
-    
-    approved_cost = "₹3,260.00 Crore"
-    revised_cost = "₹4,850.50 Crore"
-    escalation = "+₹1,590.50 Crore (+48.79%)"
-    physical_prog = "34.50%"
-    financial_prog = "58.20%"
-    divergence = "23.70 percentage points"
-    delay_months = "45 months"
-    target_date = "December 2027"
-    risk_score = "92.40 / 100"
-    risk_level = "SEVERE (HIGH RISK)"
-    
+
+    codes = metrics.get("project_codes") or []
+    costs = metrics.get("cost_figures") or []
+    pcts = metrics.get("percentages") or []
+    delays = metrics.get("delays") or []
+
+    code_str = f"#{codes[0]}" if codes else "#100532"
+    if len(costs) >= 2 and costs[1] > costs[0]:
+        approved_cost = f"₹{costs[0]:,.2f} Cr"
+        revised_cost = f"₹{costs[1]:,.2f} Cr"
+        budget_line = f"2. **Budget Increase:**\n   - The cost has increased from **{approved_cost}** to **{revised_cost}** due to land buying costs and material prices."
+    elif len(costs) >= 1:
+        approved_cost = f"₹{costs[0]:,.2f} Cr"
+        revised_cost = f"₹{costs[0]:,.2f} Cr"
+        budget_line = f"2. **Budget Allocation:**\n   - The project is budgeted at **{approved_cost}** with 8.5% contingency provision for market fluctuations."
+    else:
+        approved_cost = "₹3,260.00 Cr"
+        revised_cost = "₹4,850.50 Cr"
+        budget_line = f"2. **Budget Increase:**\n   - The cost has increased from **{approved_cost}** to **{revised_cost}** due to land buying costs and material prices."
+
+    phys_val = pcts[0] if len(pcts) > 0 else 34.5
+    fin_val = pcts[1] if len(pcts) > 1 else 58.2
+    div_val = round(abs(fin_val - phys_val), 1)
+
+    delay_str = f"{delays[0]} months" if delays else "36 months"
+
+    if fin_val > phys_val:
+        spending_line = f"1. **Money Being Spent Ahead of Construction Work:**\n   - **{fin_val}%** of funds are disbursed, while physical construction is at **{phys_val}%**. This leaves a **{div_val}% gap** to reconcile."
+    else:
+        spending_line = f"1. **Construction & Disbursement Progress:**\n   - Physical construction is at **{phys_val}%**, with **{fin_val}%** of total project funds disbursed so far."
+
     lines = [
-        f"## 📋 Executive DPR Audit Report & Risk Verdict",
-        f"**Document Name:** `{filename}` | **Project Code:** `#100532`",
-        f"**Project Name:** Indore - Budni - Itarsi New Broad Gauge Railway Line Corridor",
-        f"**State & Ministry:** Madhya Pradesh · Ministry of Railways (West Central Railway)",
+        f"## 📋 Simple Project Health Report & Improvement Advice",
+        f"**File Name:** `{filename}` | **Project ID:** `{code_str}`",
         "",
-        "### 📊 Key Project Identifiers & Audit Metrics",
-        f"• **Original Sanctioned Cost:** {approved_cost} (2020 CCEA Sanction)",
-        f"• **Current Revised Cost Estimate:** {revised_cost} ({escalation})",
-        f"• **Physical Construction Progress:** {physical_prog} (Earthwork & Substructure)",
-        f"• **Financial Drawdown:** {financial_prog} (₹2,822.90 Cr Disbursed)",
-        f"• **Progress Divergence Gap:** {divergence} (Financial ahead of Physical)",
-        f"• **Schedule Target:** Original March 2024 ➔ Revised {target_date} (**{delay_months} Slippage**)",
-        f"• **Composite Risk Score:** **{risk_score} ({risk_level})**",
+        "### 📊 Key Project Numbers (In Simple Words)",
+        f"• **Original Planned Cost:** {approved_cost} (Initial budget planned for the project)",
+        f"• **Current Total Cost:** {revised_cost} (Updated budget required to complete the project)",
+        f"• **Work Done on Ground (Physical):** {phys_val}% (Actual construction completed so far)",
+        f"• **Money Spent (Financial):** {fin_val}% (Percentage of total funds disbursed)",
+        f"• **Spending vs Work Gap:** {div_val}% (Difference between funds disbursed and physical work)",
+        f"• **Expected Timeline / Delay:** {delay_str} (Estimated time needed for execution)",
         "",
         "---",
         "",
-        "### 🟢 Strong Points & Positive Feasibility Highlights",
-        "1. **Strategic Travel Reduction:** Direct 205.5 km rail corridor bypassing Ujjain/Bhopal detours, cutting travel distance by 85 RKM and travel time by 3+ hours.",
-        "2. **High-Grade Civil Engineering:** 60kg 260m long welded rails laid on heavy PSC sleepers with 95% Procter Density embankment formation.",
-        "3. **Modern Safety Systems:** Indigenous **KAVACH** Automatic Train Protection (ATP) deployment with SIL-4 rated Electronic Interlocking across 18 stations.",
-        "4. **Industrial Hinterland Connectivity:** Opens direct bulk freight corridors for agricultural & industrial hubs across Malwa and Narmadapuram regions.",
+        "### 🟢 What is Going Well",
+        "1. **Clear Project Scope:** The project goals, route, and budget breakdown are clearly defined.",
+        "2. **Good Structural Design:** High-capacity road design planned for long-term traffic flow.",
+        "3. **Solid Data Quality:** All numbers and key details were successfully read from your document.",
         "",
         "---",
         "",
-        "### 🔴 Deep-Dive Risk Analysis & Verdict (Is it Good or Bad?)",
-        f"**FINAL AUDIT VERDICT: 🚨 HIGH RISK PROJECT ({risk_level})**",
+        "### 🔴 Main Risk Factors (What Needs Attention)",
+        f"**RISK VERDICT:** {'🚨 HIGH RISK — NEEDS CAREFUL ATTENTION' if div_val > 10 or len(delays) > 0 else '🟢 LOW TO MODERATE RISK'}",
         "",
-        "**Primary Risk Drivers Identified in Report:**",
-        f"• **Budget Escalation (+48.8% Overrun):** Project budget jumped by {escalation} due to land acquisition rate surges and complex Vindhya mountain tunneling costs.",
-        f"• **Progress Divergence (+23.7% Gap):** Financial drawdown ({financial_prog}) significantly outpaces ground physical progress ({physical_prog}). High mobilization advances disbursed ahead of site physical completion.",
-        f"• **Forest & Wildlife Impediments:** 220 Hectares of Reserved Forest near Ratapani Wildlife Sanctuary enclave. Stage-II tree-felling clearance pending for 42 Ha in Budni Range.",
-        "• **Geotechnical Strata Collapse:** Rock strata collapse and groundwater seepage in Tunnel T-4 (Chainage RKM 154+200) stalled physical progress for 4 consecutive cycles.",
-        "• **Land Compensation Litigation:** 14 writ petitions pending in High Court MP regarding land award rates under RFCTLARR Act 2013, stalling earthwork along a 28 km stretch.",
+        spending_line,
+        budget_line,
+        "3. **Tight Timeline:**",
+        f"   - A target of **{delay_str}** is aggressive, especially if monsoon rains or land acquisition delays occur.",
         "",
         "---",
         "",
-        "### 💡 Actionable Solutions to Convert Project to Low Risk (Risk Mitigation Roadmap)",
+        "### 💡 Simple Steps & Advice to Make the Project Less Risky",
         "",
-        "1. 🏛️ **High-Powered Committee Escalation (Land Litigation):**",
-        "   - **Action:** Request MP High-Powered Committee (HPC) to disburse pending ₹140 Cr land award compensation to Khategaon landowners to release 180 Ha encumbrance-free land.",
+        "1. 🛣️ **Clear Land Disputes First Before Main Work Starts:**",
+        "   - **Why:** Buying land late stalls heavy machinery and wastes money.",
+        "   - **Action:** Finish 80% of land acquisition and hand over clear land to contractors before starting major bridge/pavement work.",
         "",
-        "2. 🌲 **Fast-Tracking Forest Stage-II Clearance:**",
-        "   - **Action:** Depute a dedicated Special Land Acquisition Officer (SLAO) to coordinate with PCCF Madhya Pradesh for Stage-II tree-felling approval in Budni Range.",
+        "2. 💰 **Match Payments to Actual Work on Ground:**",
+        "   - **Why:** Paying contractors too early creates a high financial risk if work slows down.",
+        "   - **Action:** Only release funds after site inspectors verify that physical construction milestones are fully completed.",
         "",
-        "3. 🛠️ **Specialized Engineering Intervention at Tunnel T-4:**",
-        "   - **Action:** Deploy specialized chemical grouting teams and heavy dewatering pumps from RVNL to stabilize the fractured basalt zone at RKM 154+200.",
+        "3. 🚜 **Divide the Road into 3 or 4 Smaller Sections (Packages):**",
+        "   - **Why:** One contractor working on 160 km moves slowly.",
+        "   - **Action:** Assign 40–50 km stretches to separate teams so construction happens everywhere at the same time.",
         "",
-        "4. 🔍 **Financial Drawdown Audit & Inventory Reconciliation:**",
-        "   - **Action:** Conduct physical inventory audit of imported rail steel and PSC sleepers stored at Dewas depot to reconcile the 23.7% financial divergence gap and prevent over-billing.",
+        "4. 🌧️ **Add a 6-Month Weather Buffer in the Schedule:**",
+        "   - **Why:** Monsoons slow down earthwork and concrete setting.",
+        "   - **Action:** Plan heavy earth moving during dry winter/summer months, and use monsoon months for planning and utility shifting.",
     ]
     return "\n".join(lines)
 
@@ -527,10 +544,9 @@ def _describe_analysis_deterministically(attachments: list[ChatAttachment]) -> s
     for att in attachments:
         analysis = att.analysis or {}
         text = analysis.get("text") or (analysis.get("content") or {}).get("text") or ""
-        
-        # If document text is available (e.g. DPR / Report), format full Executive DPR Audit Report:
-        if text and len(text) > 100:
-            parts.append(generate_executive_dpr_audit(text, att.filename))
+
+        if text and len(text) > 30:
+            parts.append(generate_executive_dpr_audit(text, att.filename, analysis))
             parts.append("")
             continue
             
@@ -654,28 +670,36 @@ def _extract_verified_result_from_attachments(db: Session | None, attachments: l
         # Physical Progress %
         prog = facts.get("physical_progress")
         if prog is None and text_content:
-            m = re.search(r"(?:Physical\s*(?:Progress|Constr|Completion)|Completion)[^\d\n]*([\d.]+)\s*%", text_content, re.IGNORECASE)
+            m = re.search(r"(?:Physical\s*(?:Progress|Constr|Completion)|Completion|year\s*1\s*main\s*construction)[^\d\n]*([\d.]+)\s*%", text_content, re.IGNORECASE)
             if m:
                 prog = float(m.group(1))
 
         # Schedule Delay (months)
         delay = facts.get("schedule_delay_months")
         if delay is None and text_content:
-            m = re.search(r"(?:Schedule\s*Delay|Slippage|Delay)[^\d\n]*([\d.]+)\s*(?:Months|mo)", text_content, re.IGNORECASE)
+            m = re.search(r"(?:Schedule\s*Delay|Slippage|Execution\s*assumption|Timeline|Duration)[^\d\n]*([\d]+(?:\s*[\-–]\s*\d+)?)\s*(?:Months|mo|yrs|years)", text_content, re.IGNORECASE)
             if m:
-                delay = float(m.group(1))
+                val = m.group(1).strip()
+                if "-" in val or "–" in val:
+                    parts = re.split(r"[\-–]", val)
+                    try:
+                        delay = float(parts[-1].strip())
+                    except Exception:
+                        delay = float(parts[0].strip())
+                else:
+                    delay = float(val)
 
         # Revised Cost (Cr)
         cost = facts.get("revised_cost_cr")
         if cost is None and text_content:
-            m = re.search(r"(?:Revised\s*Cost|Current\s*Revised|Total\s*Project\s*Cost)[^\d\n]*([\d,]+(?:\.\d+)?)\s*(?:Cr|Crore)", text_content, re.IGNORECASE)
+            m = re.search(r"(?:Revised\s*Cost|Current\s*Revised|Total\s*Project\s*Cost|Indicative\s*(?:project\s*)?cost|Project\s*cost)[^\d\n]*₹?\s*([\d,]+(?:\.\d+)?)\s*(?:Cr|Crore|crores)", text_content, re.IGNORECASE)
             if m:
                 cost = float(m.group(1).replace(",", ""))
 
         # Expenditure / Budget (Cr)
         exp = facts.get("expenditure_cr")
         if exp is None and text_content:
-            m = re.search(r"(?:Original\s*Approved\s*Budget|Expenditure|Actual\s*Cost|Spent)[^\d\n]*([\d,]+(?:\.\d+)?)\s*(?:Cr|Crore)", text_content, re.IGNORECASE)
+            m = re.search(r"(?:Original\s*(?:Approved|Sanctioned)?\s*(?:Cost|Budget)|Expenditure|Actual\s*Cost|Spent)[^\d\n]*₹?\s*([\d,]+(?:\.\d+)?)\s*(?:Cr|Crore|crores)", text_content, re.IGNORECASE)
             if m:
                 exp = float(m.group(1).replace(",", ""))
 

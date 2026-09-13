@@ -64,8 +64,10 @@ async function loadList() {
         <td data-label="Period">${x.report_period ? periodLabel(x.report_period) : '—'}</td>
         <td data-label="Generated">${esc((x.generated_at || '').slice(0, 16).replace('T', ' '))}</td>
         <td data-label="By">${esc(x.generated_by || '—')}</td>
-        <td data-label=""><button class="btn btn-outline btn-sm"
-          onclick="download(${x.id},'${esc(x.filename)}')">Download</button></td>
+        <td data-label="" style="white-space:nowrap">
+          <button class="btn btn-outline btn-sm" onclick="download(${x.id},'${esc(x.filename)}','pdf')">PDF</button>
+          <button class="btn btn-outline btn-sm" onclick="download(${x.id},'${esc(x.filename.replace('.pdf','.csv'))}','csv')">CSV</button>
+        </td>
       </tr>`).join('')}</tbody></table>`
       : '<div class="empty">No reports generated yet.</div>';
   } catch (err) {
@@ -74,9 +76,10 @@ async function loadList() {
   }
 }
 
-async function download(id, filename) {
+async function download(id, filename, format = 'pdf') {
   try {
-    const res = await fetch(`/api/reports/${id}/download`,
+    const endpoint = format === 'csv' ? `/api/reports/${id}/download_csv` : `/api/reports/${id}/download`;
+    const res = await fetch(endpoint,
       { headers: { Authorization: 'Bearer ' + API.token() } });
     if (!res.ok) {
       const b = await res.json().catch(() => ({}));

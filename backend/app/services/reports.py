@@ -90,12 +90,29 @@ def _header_footer(canvas, doc):
     w, h = A4
     canvas.setFillColor(NAVY)
     canvas.rect(0, h - 16 * mm, w, 16 * mm, fill=1, stroke=0)
+
+    logo_clean = settings.frontend_dir / "static" / "logo_header_clean.png"
+    logo_path = logo_clean if logo_clean.exists() else (settings.frontend_dir / "static" / "logo.png")
+    text_x = 18 * mm
+    if logo_path.exists():
+        canvas.drawImage(
+            str(logo_path),
+            15 * mm,
+            h - 14.5 * mm,
+            width=13 * mm,
+            height=13 * mm,
+            mask="auto",
+            preserveAspectRatio=True,
+        )
+        text_x = 31 * mm
+
     canvas.setFillColor(colors.white)
-    canvas.setFont("Helvetica-Bold", 11)
-    canvas.drawString(18 * mm, h - 10.5 * mm, "PAIMANA")
+    canvas.setFont("Helvetica-Bold", 11.5)
+    canvas.drawString(text_x, h - 8.8 * mm, "PAIMANA")
     canvas.setFont("Helvetica", 7.5)
     canvas.drawString(
-        18 * mm, h - 14 * mm,
+        text_x,
+        h - 13.2 * mm,
         "Project Assessment, Intelligence, Monitoring & Analytics Network for "
         "Accelerated Infrastructure",
     )
@@ -389,3 +406,158 @@ def _national_report(db, report_type, period, stamp, ts, generated_by):
 
     _doc(path, title).build(story, onFirstPage=_header_footer, onLaterPages=_header_footer)
     return path, title
+
+
+def generate_csv(
+    db: Session,
+    *,
+    report_type: str,
+    project_code: str | None = None,
+    period: str | None = None,
+) -> tuple[str, str]:
+    """Generate a clean CSV version of any PAIMANA report."""
+    import csv
+    import io
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    ts = dt.datetime.now(dt.timezone.utc)
+
+    writer.writerow(["PAIMANA AI - INFRASTRUCTURE PROJECT INTELLIGENCE PLATFORM"])
+    writer.writerow(["Report Type", report_type])
+    writer.writerow(["Generated At (UTC)", ts.strftime("%Y-%m-%d %H:%M:%S")])
+    writer.writerow(["Disclaimer", DISCLAIMER])
+    writer.writerow([])
+
+    if report_type == "PROJECT":
+        if not project_code:
+            raise ValueError("A project code is required for a project report.")
+        project = db.query(Project).filter_by(project_code=project_code).one_or_none()
+        if project is None:
+            raise ValueError("Project not found.")
+        snaps = (
+            db.query(ProjectSnapshot)
+            .filter_by(project_id=project.id, supersedes_id=None)
+            .order_by(ProjectSnapshot.report_period)
+            .all()
+        )
+        if not snaps:
+            raise ValueError("Project has no snapshots.")
+        latest = snaps[-1]
+
+        filename = f"project_{project_code}_{ts.strftime('%Y%m%d%H%M%S')}.csv"
+
+        writer.writerow(["PROJECT INFORMATION"])
+        writer.writerow(["Field", "Value"])
+        writer.writerow(["Project Name", project.name])
+        writer.writerow(["Project Code", project.project_code])
+        writer.writerow(["Executing Agency", project.agency])
+        writer.writerow(["Ministry", project.ministry])
+        writer.writerow(["Sector", project.sector])
+        writer.writerow(["State", project.state])
+        writer.writerow([])
+
+        writer.writerow(["CURRENT SNAPSHOT"])
+        writer.writerow(["Indicator", "Value"])
+        writer.writerow(["Reporting Period", latest.report_period])
+        writer.writerow(["Original Cost (Cr)", latest.original_cost])
+        writer.writerow(["Revised Cost (Cr)", latest.revised_cost])
+        writer.writerow(["Cumulative Expenditure (Cr)", latest.expenditure])
+        writer.writerow(["Physical Progress (%)", latest.physical_progress])
+        writer.writerow(["Financial Progress (%)", latest.financial_progress])
+        writer.writerow(["Cost Escalation (%)", latest.cost_escalation_pct])
+        writer.writerow(["Schedule Delay (months)", latest.schedule_delay_months])
+        writer.writerow(["Composite Risk Score", latest.risk_score])
+        writer.writerow(["Risk Level", latest.risk_level.value if latest.risk_level else "UNKNOWN"])
+        writer.writerow([])
+
+        writer.writerow(["HISTORICAL TREND"])
+        writer.writerow(["Period", "Risk Score", "Risk Level", "Physical Progress %", "Financial Progress %", "Expenditure Cr", "Revised Cost Cr"])
+        for s in snaps:
+            writer.writerow([
+                s.report_period, s.risk_score,
+                s.risk_level.value if s.risk_level else "UNKNOWN",
+                s.physical_progress, s.financial_progress,
+                s.expenditure, s.revised_cost
+            ])
+        writer.writerow([])
+        return output.getvalue(), filename
+
+    period = period or analytics.latest_period(db)
+    summary = analytics.national_summary(db, period)
+    trend = analytics.national_trend(db)
+    filename = f"{report_type.lower()}_{period}_{ts.strftime('%Y%m%d%H%M%S')}.csv"
+
+    writer.writerow(["NATIONAL POSITION", f"Period: {period}"])
+    writer.writerow(["Indicator", "Value"])
+    writer.writerow(["Projects Monitored", summary["total_projects"]])
+    writer.writerow(["In HIGH or SEVERE Risk Band", summary["at_risk"]])
+    writer.writerow(["Severe Risk Projects", summary["risk_distribution"]["SEVERE"]])
+    writer.writerow(["Delayed Projects", f"{summary['delayed_projects']} ({summary['delayed_pct']}%)"])
+    writer.writerow(["Projects with Cost Escalation", summary["cost_escalated_projects"]])
+    writer.writerow(["Approved Cost (Cr)", summary["original_cost_cr"]])
+    writer.writerow(["Revised Cost (Cr)", summary["revised_cost_cr"]])
+    writer.writerow(["Cost Exposure (Cr)", summary["cost_exposure_cr"]])
+    writer.writerow(["Cumulative Expenditure (Cr)", summary["expenditure_cr"]])
+    writer.writerow(["Mean Physical Progress (%)", summary["mean_physical_progress"]])
+    writer.writerow([])
+
+    writer.writerow(["TREND ACROSS REPORTING PERIODS"])
+    writer.writerow(["Period", "Projects", "Avg Risk Score", "At Risk Projects", "Cost Exposure Cr", "Expenditure Cr"])
+    for t in trend:
+        writer.writerow([t["period"], t["projects"], t["avg_risk_score"], t["at_risk"], t["cost_exposure_cr"], t["expenditure_cr"]])
+    writer.writerow([])
+
+    if report_type in {"RISK", "MONTHLY_MONITORING"}:
+        top = (
+            db.query(ProjectSnapshot, Project)
+            .join(Project, Project.id == ProjectSnapshot.project_id)
+            .filter(ProjectSnapshot.report_period == period, ProjectSnapshot.supersedes_id.is_(None))
+            .order_by(ProjectSnapshot.risk_score.desc())
+            .limit(20)
+            .all()
+        )
+        writer.writerow(["HIGHEST RISK PROJECTS"])
+        writer.writerow(["Risk Score", "Risk Level", "Project Code", "Project Name", "State", "Physical Progress %", "Delay (months)"])
+        for s, p in top:
+            writer.writerow([s.risk_score, s.risk_level.value if s.risk_level else "UNKNOWN", p.project_code, p.name, p.state, s.physical_progress, s.schedule_delay_months])
+        writer.writerow([])
+
+    return output.getvalue(), filename
+
+
+def rebuild_all_reports(db: Session) -> int:
+    """Regenerate all existing reports stored in the database with the updated header logo."""
+    from ..models import Report
+
+    reports_list = db.query(Report).all()
+    count = 0
+    for r in reports_list:
+        try:
+            params = r.parameters or {}
+            p_code = params.get("project_code")
+            period = r.report_period or params.get("period")
+            gen_by = r.generated_by or "PAIMANA"
+
+            temp_path, clean_title = generate(
+                db,
+                report_type=r.report_type,
+                project_code=p_code,
+                period=period,
+                generated_by=gen_by,
+            )
+
+            # Copy regenerated PDF to the target filename in REPORT_DIR
+            target_path = REPORT_DIR / r.filename
+            if temp_path.exists():
+                import shutil
+                shutil.copy(temp_path, target_path)
+
+            r.title = clean_title.replace("—", "-")
+            count += 1
+        except Exception as exc:
+            print(f"Skipping report ID {r.id}: {exc}")
+
+    db.commit()
+    return count
+

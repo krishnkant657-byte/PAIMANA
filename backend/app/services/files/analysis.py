@@ -224,7 +224,43 @@ def _summary_facts(detection: det.Detection, payload: dict, base: dict) -> dict:
         facts.update({"container_format": payload.get("container_format"),
                       "parseable": payload.get("parseable"),
                       "executed": False})
+
+    raw_text = payload.get("text") or payload.get("preview") or ""
+    metrics = extract_key_metrics(raw_text, payload)
+    if any(metrics.values()):
+        facts["extracted_metrics"] = metrics
+
     return facts
+
+
+def extract_key_metrics(text: str, payload: dict) -> dict:
+    """Extract key numerical metrics, project codes, costs, progress %, and delays."""
+    import re
+    metrics = {
+        "project_codes": [],
+        "cost_figures": [],
+        "percentages": [],
+        "delays": [],
+    }
+    txt = text or ""
+    if not txt and isinstance(payload, dict):
+        txt = str(payload.get("tables") or "")
+
+    codes = re.findall(r"(?:code|id|project|#)\s*[:#]?\s*(\d{5,7})\b", txt, re.IGNORECASE)
+    if not codes:
+        codes = re.findall(r"\b(\d{6})\b", txt)
+    metrics["project_codes"] = list(dict.fromkeys(codes))[:5]
+
+    costs = re.findall(r"(?:₹|rs\.?|inr)?\s*([\d,]+(?:\.\d+)?)\s*(?:cr|crore|crores)\b", txt, re.IGNORECASE)
+    metrics["cost_figures"] = [float(c.replace(",", "")) for c in costs if c][:10]
+
+    pcts = re.findall(r"([\d,]+(?:\.\d+)?)\s*%", txt)
+    metrics["percentages"] = [float(p.replace(",", "")) for p in pcts if p][:10]
+
+    delays = re.findall(r"(\d+)\s*(?:months?|mth|mths)\b", txt, re.IGNORECASE)
+    metrics["delays"] = [int(d) for d in delays if d][:5]
+
+    return metrics
 
 
 def _legibility(payload: dict) -> str:

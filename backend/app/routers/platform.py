@@ -13,7 +13,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -380,6 +380,36 @@ def download_report(
         object_id=report_id, request=request,
     )
     return FileResponse(path, media_type="application/pdf", filename=entry.filename)
+
+
+@router.get("/reports/{report_id}/download_csv")
+def download_report_csv(
+    report_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    entry = db.get(Report, report_id)
+    if entry is None:
+        raise HTTPException(404, "Report not found.")
+
+    params = entry.parameters or {}
+    csv_content, filename = reports.generate_csv(
+        db,
+        report_type=entry.report_type,
+        project_code=params.get("project_code"),
+        period=entry.report_period or params.get("period"),
+    )
+
+    audit_record(
+        db, actor=user.username, action="REPORT_DOWNLOADED_CSV", object_type="Report",
+        object_id=report_id, request=request,
+    )
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ---------------------------------------------------------------------------

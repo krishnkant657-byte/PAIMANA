@@ -120,7 +120,7 @@ function renderChrome(active) {
     <header class="identity">
       <div class="wrap">
         <div class="brand">
-          <img class="brand-mark" src="/static/logo.jpg" alt="PAIMANA Logo"/>
+          <img class="brand-mark" src="/static/logo.png" alt="PAIMANA Logo"/>
           <div class="brand-text">
             <div class="org">Infrastructure Project Intelligence Platform</div>
             <div class="name">PAIMANA</div>
@@ -143,7 +143,7 @@ function renderChrome(active) {
     <nav class="nav" aria-label="Primary">
       <div class="wrap">
         <button class="nav-toggle" aria-expanded="false" aria-controls="navLinks">☰ Menu</button>
-        <div class="nav-links" id="navLinks" style="display:flex;flex-wrap:wrap">${links}</div>
+        <div class="nav-links" id="navLinks">${links}</div>
       </div>
     </nav>
   `);
@@ -157,7 +157,7 @@ function renderChrome(active) {
     <footer class="footer">
       <div class="wrap footer-cols">
         <div class="footer-brand">
-          <img class="brand-mark" src="/static/logo.jpg" alt="PAIMANA Logo"/>
+          <img class="brand-mark" src="/static/logo.png" alt="PAIMANA Logo"/>
           <h4 style="margin-top:14px">PAIMANA</h4>
           <p style="font-size:13.4px;line-height:1.65">Evidence-grounded monitoring, risk
           intelligence and intervention tracking for public infrastructure projects.</p>
@@ -213,6 +213,7 @@ function renderChrome(active) {
     const links = document.getElementById('navLinks');
     const open = links.classList.toggle('open');
     toggle.setAttribute('aria-expanded', String(open));
+    toggle.innerHTML = open ? '✕ Close' : '☰ Menu';
   });
 
   document.getElementById('signOut')?.addEventListener('click', (e) => {
