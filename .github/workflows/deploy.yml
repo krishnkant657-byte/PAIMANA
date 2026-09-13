@@ -37,5 +37,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
+            ghcr.io/krishnkant657-byte/paimana:latest
+            ghcr.io/krishnkant657-byte/paimana:${{ github.sha }}
