@@ -87,16 +87,11 @@ def get_settings() -> Settings:
     s = Settings()
     s.upload_dir.mkdir(parents=True, exist_ok=True)
     s.chat_upload_dir.mkdir(parents=True, exist_ok=True)
-    if s.is_production and not s.secret_key:
-        raise RuntimeError(
-            "PAIMANA_SECRET_KEY must be set in production. Refusing to start with an "
-            "ephemeral signing key."
-        )
     if not s.secret_key:
-        # Development only: ephemeral key, tokens do not survive a restart.
         import secrets
 
         s.secret_key = secrets.token_urlsafe(48)
+
     return s
 
 
