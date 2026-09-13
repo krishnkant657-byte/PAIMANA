@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: PAIMANA
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: ENVIRONMENT
+        value: production
